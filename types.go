@@ -11,12 +11,17 @@ type Peer struct {
 }
 
 type Instance struct {
-	Name         string
-	Handler      *peer.Peer
-	Close        chan bool
-	Done         chan bool
-	RetryCounter int
-	MaxRetries   int
+	Name             string
+	Handler          *peer.Peer
+	Close            chan bool
+	Done             chan bool
+	RetryCounter     int
+	MaxRetries       int
+	CustomHandlers   map[string]func(*Peer, *RxPacket)
+	RemappedHandlers map[string]func(*Peer, *RxPacket)
+	IsBridge         bool
+	IsRelay          bool
+	IsDiscovery      bool
 }
 
 type Packet struct {

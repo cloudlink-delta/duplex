@@ -33,25 +33,27 @@ func New(ID string) *Instance {
 	}
 
 	instance := &Instance{
-		Name:         ID,
-		Handler:      serverPeer,
-		Close:        make(chan bool),
-		Done:         make(chan bool),
-		RetryCounter: 0,
-		MaxRetries:   5,
+		Name:             ID,
+		Handler:          serverPeer,
+		Close:            make(chan bool),
+		Done:             make(chan bool),
+		RetryCounter:     0,
+		MaxRetries:       5,
+		CustomHandlers:   make(map[string]func(*Peer, *RxPacket)),
+		RemappedHandlers: make(map[string]func(*Peer, *RxPacket)),
 	}
 
 	return instance
 }
 
-func (s *Instance) Run() {
-	provider := s.Handler
+func (i *Instance) Run() {
+	provider := i.Handler
 	defer provider.Destroy()
 
 	provider.On("connection", func(data any) {
 		switch c := data.(type) {
 		case *peer.DataConnection:
-			s.PeerHandler(&Peer{DataConnection: c, Parent: s})
+			i.PeerHandler(&Peer{DataConnection: c, Parent: i})
 		default:
 			panic("unhandled data type")
 		}
@@ -62,20 +64,20 @@ func (s *Instance) Run() {
 	})
 
 	provider.On("open", func(data any) {
-		s.RetryCounter = 0
-		log.Printf("Peer opened as %s", s.Name)
+		i.RetryCounter = 0
+		log.Printf("Peer opened as %s", i.Name)
 	})
 
 	provider.On("close", func(data any) {
 		log.Println("Peer closed")
-		s.Done <- true
+		i.Done <- true
 	})
 
-	<-s.Close
+	<-i.Close
 	log.Println("\nPeer got close signal")
 }
 
-func (s *Instance) PeerHandler(conn *Peer) {
+func (i *Instance) PeerHandler(conn *Peer) {
 	conn.On("open", func(data any) {
 		log.Printf("%s connected", conn.GiveName())
 		log.Printf("%s metadata: %v", conn.GiveName(), conn.Metadata)
@@ -97,4 +99,28 @@ func (s *Instance) PeerHandler(conn *Peer) {
 		log.Printf("%s 🢂 %v", conn.GiveName(), packet)
 		go conn.HandlePacket(packet)
 	})
+}
+
+func (i *Instance) Bind(opcode string, handler func(*Peer, *RxPacket)) {
+	if _, exists := i.CustomHandlers[opcode]; exists {
+		log.Printf("Handler for opcode %s already exists", opcode)
+		return
+	}
+	i.CustomHandlers[opcode] = handler
+}
+
+func (i *Instance) Remap(opcode string, handler func(*Peer, *RxPacket)) {
+	if _, exists := i.RemappedHandlers[opcode]; exists {
+		log.Printf("Remapped handler for opcode %s already exists", opcode)
+		return
+	}
+	i.RemappedHandlers[opcode] = handler
+}
+
+func (i *Instance) Unbind(opcode string) {
+	delete(i.CustomHandlers, opcode)
+}
+
+func (i *Instance) Unmap(opcode string) {
+	delete(i.RemappedHandlers, opcode)
 }
