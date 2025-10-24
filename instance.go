@@ -2,10 +2,15 @@ package duplex
 
 import (
 	"log"
+	"slices"
+	"sync"
 
 	peer "github.com/muka/peerjs-go"
 	"github.com/pion/webrtc/v3"
 )
+
+type Peers map[string]*Peer
+type PeerSlice []*Peer
 
 func New(ID string) *Instance {
 	config := peer.NewOptions()
@@ -39,11 +44,22 @@ func New(ID string) *Instance {
 		Done:             make(chan bool),
 		RetryCounter:     0,
 		MaxRetries:       5,
+		Peers:            make(Peers),
 		CustomHandlers:   make(map[string]func(*Peer, *RxPacket)),
 		RemappedHandlers: make(map[string]func(*Peer, *RxPacket)),
 	}
 
 	return instance
+}
+
+func (p *Peers) ToSlice(exclusions ...*Peer) PeerSlice {
+	var peers PeerSlice
+	for _, peer := range *p {
+		if !slices.Contains(exclusions, peer) {
+			peers = append(peers, peer)
+		}
+	}
+	return peers
 }
 
 func (i *Instance) Run() {
@@ -53,7 +69,13 @@ func (i *Instance) Run() {
 	provider.On("connection", func(data any) {
 		switch c := data.(type) {
 		case *peer.DataConnection:
-			i.PeerHandler(&Peer{DataConnection: c, Parent: i})
+			p := &Peer{
+				DataConnection: c,
+				Parent:         i,
+				Lock:           &sync.Mutex{},
+				KeyStore:       make(map[string]any),
+			}
+			i.PeerHandler(p)
 		default:
 			panic("unhandled data type")
 		}
@@ -81,10 +103,18 @@ func (i *Instance) PeerHandler(conn *Peer) {
 	conn.On("open", func(data any) {
 		log.Printf("%s connected", conn.GiveName())
 		log.Printf("%s metadata: %v", conn.GiveName(), conn.Metadata)
+		i.Peers[conn.GetPeerID()] = conn
+		if fn := i.OnOpen; fn != nil {
+			fn(conn)
+		}
 	})
 
 	conn.On("close", func(data any) {
 		log.Printf("%s disconnected", conn.GiveName())
+		delete(i.Peers, conn.GetPeerID())
+		if fn := i.OnClose; fn != nil {
+			fn(conn)
+		}
 	})
 
 	conn.On("error", func(data any) {
@@ -123,4 +153,10 @@ func (i *Instance) Unbind(opcode string) {
 
 func (i *Instance) Unmap(opcode string) {
 	delete(i.RemappedHandlers, opcode)
+}
+
+func (i *Instance) Broadcast(packet *TxPacket, peers PeerSlice) {
+	for _, peer := range peers {
+		go peer.Write(packet)
+	}
 }

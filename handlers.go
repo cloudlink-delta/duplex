@@ -9,6 +9,15 @@ import (
 
 func (conn *Peer) HandlePacket(r *RxPacket) {
 
+	// Decrement TTL
+	r.TTL--
+
+	// Drop packet if TTL is < 0
+	if r.TTL < 0 {
+		log.Printf("%s dropped packet \"%s\": TTL expired", conn.GiveName(), r.Opcode)
+		return
+	}
+
 	// Remapped functions take precedence
 	if remapped, ok := conn.Parent.RemappedHandlers[r.Opcode]; ok {
 		remapped(conn, r)
@@ -24,7 +33,9 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 		conn.Write(&TxPacket{
 			Packet: Packet{
 				Opcode: "PONG",
+				TTL:    1,
 			},
+			Payload: r.Payload,
 		})
 
 	default:
@@ -72,16 +83,22 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 	}
 
 	// Reply with our capabilities and version
+	conn.SendNegotiate()
+}
+
+// SendNegotiate sends a NEGOTIATE packet to a newly connected peer.
+func (conn *Peer) SendNegotiate() {
 	conn.Write(&TxPacket{
 		Packet: Packet{
 			Opcode: "NEGOTIATE",
+			TTL:    1,
 		},
 		Payload: NegotiationArgs{
 			Version: VersionArgs{
 				Type:  "Go", // Do not change this
 				Major: 1,
 				Minor: 0,
-				Patch: 0,
+				Patch: 1,
 			},
 			SpecVersion: 0,
 			Plugins:     []string{},

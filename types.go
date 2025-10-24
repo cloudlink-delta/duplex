@@ -1,15 +1,21 @@
 package duplex
 
 import (
+	"sync"
+
 	"github.com/goccy/go-json"
 	peer "github.com/muka/peerjs-go"
 )
 
+// Peer is a representation of a peer connection for a duplex instance.
 type Peer struct {
-	Parent *Instance
-	*peer.DataConnection
+	Parent               *Instance      // Pointer to the parent instance that created this peer
+	Lock                 *sync.Mutex    // Lock for transmit thread safety
+	KeyStore             map[string]any // Map of key-value pairs of any type
+	*peer.DataConnection                // Pointer to the peer data connection
 }
 
+// Instance is a representation of a duplex instance.
 type Instance struct {
 	Name             string
 	Handler          *peer.Peer
@@ -17,6 +23,9 @@ type Instance struct {
 	Done             chan bool
 	RetryCounter     int
 	MaxRetries       int
+	Peers            Peers
+	OnOpen           func(*Peer)
+	OnClose          func(*Peer)
 	CustomHandlers   map[string]func(*Peer, *RxPacket)
 	RemappedHandlers map[string]func(*Peer, *RxPacket)
 	IsBridge         bool
@@ -35,7 +44,7 @@ type Packet struct {
 
 type RxPacket struct {
 	Packet
-	Payload json.RawMessage `json:"payload"`
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 func (p *RxPacket) String() string {
