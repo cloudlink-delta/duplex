@@ -54,7 +54,7 @@ func (p *RxPacket) String() string {
 
 type TxPacket struct {
 	Packet
-	Payload any `json:"payload"`
+	Payload any `json:"payload,omitempty"`
 }
 
 func (p *TxPacket) String() string {
