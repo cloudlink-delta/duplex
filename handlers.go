@@ -3,6 +3,7 @@ package duplex
 import (
 	"log"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-json"
 )
@@ -30,12 +31,35 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 		conn.HandleNegotiate(r)
 
 	case "PING":
+
+		type PingRequest struct {
+			T1 int64 `json:"t1"`
+		}
+
+		then := &PingRequest{}
+
+		err := json.Unmarshal(r.Payload, &then)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		var now = time.Now().UnixNano() / 1000000
+
+		type PongReply struct {
+			T1 int64 `json:"t1"`
+			T2 int64 `json:"t2"`
+		}
+
 		conn.Write(&TxPacket{
 			Packet: Packet{
 				Opcode: "PONG",
 				TTL:    1,
 			},
-			Payload: r.Payload,
+			Payload: PongReply{
+				T1: then.T1,
+				T2: now,
+			},
 		})
 
 	default:
