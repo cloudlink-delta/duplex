@@ -53,8 +53,9 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 
 		conn.Write(&TxPacket{
 			Packet: Packet{
-				Opcode: "PONG",
-				TTL:    1,
+				Opcode:   "PONG",
+				TTL:      1,
+				Listener: r.Listener,
 			},
 			Payload: PongReply{
 				T1: then.T1,
@@ -107,15 +108,20 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 	}
 
 	// Reply with our capabilities and version
-	conn.SendNegotiate()
+	conn.SendNegotiate(reader)
+
+	if fn := conn.Parent.AfterNegotiation; fn != nil {
+		fn(conn)
+	}
 }
 
 // SendNegotiate sends a NEGOTIATE packet to a newly connected peer.
-func (conn *Peer) SendNegotiate() {
+func (conn *Peer) SendNegotiate(r *RxPacket) {
 	conn.Write(&TxPacket{
 		Packet: Packet{
-			Opcode: "NEGOTIATE",
-			TTL:    1,
+			Opcode:   "NEGOTIATE",
+			TTL:      1,
+			Listener: r.Listener,
 		},
 		Payload: NegotiationArgs{
 			Version: VersionArgs{

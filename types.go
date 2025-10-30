@@ -24,6 +24,7 @@ type Instance struct {
 	RetryCounter     int
 	MaxRetries       int
 	Peers            Peers
+	AfterNegotiation func(*Peer)
 	OnOpen           func(*Peer)
 	OnClose          func(*Peer)
 	CustomHandlers   map[string]func(*Peer, *RxPacket)
@@ -34,12 +35,13 @@ type Instance struct {
 }
 
 type Packet struct {
-	Opcode string `json:"opcode"`
-	Origin string `json:"origin,omitempty"`
-	Target string `json:"target,omitempty"`
-	TTL    int    `json:"ttl,omitempty"`
-	Id     string `json:"id,omitempty"`
-	Method string `json:"method,omitempty"`
+	Opcode   string `json:"opcode"`
+	Origin   string `json:"origin,omitempty"`
+	Target   string `json:"target,omitempty"`
+	TTL      int    `json:"ttl,omitempty"`
+	Id       string `json:"id,omitempty"`
+	Method   string `json:"method,omitempty"`
+	Listener string `json:"listener,omitempty"`
 }
 
 type RxPacket struct {
