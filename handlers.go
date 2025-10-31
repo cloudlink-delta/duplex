@@ -2,6 +2,7 @@ package duplex
 
 import (
 	"log"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,7 +22,28 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 
 	// Remapped functions take precedence
 	if remapped, ok := conn.Parent.RemappedHandlers[r.Opcode]; ok {
+
+		// Verify if the remapped handler requires any special features
+		if required_features := conn.Parent.RemappedHandlersRequiredFeatures[r.Opcode]; len(required_features) > 0 {
+
+			// Check if the peer has all the required features
+			for _, feature := range required_features {
+				if slices.Contains(conn.Features, feature) {
+					log.Printf("%s dropped packet \"%s\": missing required feature %s", conn.GiveName(), r.Opcode, feature)
+					return
+				}
+			}
+		}
+
 		remapped(conn, r)
+		return
+	}
+
+	// Listener handlers take second priority
+	if listener, ok := conn.Listeners[r.Opcode]; ok {
+		if r.Opcode == listener.Opcode {
+			listener.Handler(r)
+		}
 		return
 	}
 
@@ -67,6 +89,19 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 
 		// Process custom opcodes if there are any
 		if handler, ok := conn.Parent.CustomHandlers[r.Opcode]; ok {
+
+			// Verify if the custom handler requires any special features
+			if required_features := conn.Parent.CustomHandlersRequiredFeatures[r.Opcode]; len(required_features) > 0 {
+
+				// Check if the peer has all the required features
+				for _, feature := range required_features {
+					if slices.Contains(conn.Features, feature) {
+						log.Printf("%s dropped packet \"%s\": missing required feature %s", conn.GiveName(), r.Opcode, feature)
+						return
+					}
+				}
+			}
+
 			handler(conn, r)
 		}
 	}
@@ -107,6 +142,9 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 		log.Printf("%s advertises the following features: %v", conn.GiveName(), strings.Join(advertised_features, ", "))
 	}
 
+	// Store our advertised features
+	conn.Features = advertised_features
+
 	// Reply with our capabilities and version
 	conn.SendNegotiate(reader)
 
@@ -137,4 +175,45 @@ func (conn *Peer) SendNegotiate(r *RxPacket) {
 			IsDiscovery: conn.Parent.IsDiscovery,
 		},
 	})
+}
+
+// SendAndWaitForReply sends a packet and waits for a response with the given opcode.
+// The packet needs to be tagged with a listener string. The function will return a
+// channel that will receive the response packet when it is received.
+// If the opcode of the received packet does not match the reply opcode, the function will
+// return nil.
+// The function will also return nil if the packet is not tagged with a listener string.
+// The function will block until the response is received or the underlying connection is closed.
+// The function is safe for concurrent use.
+func (conn *Peer) SendAndWaitForReply(reply_opcode string, request *TxPacket) *RxPacket {
+
+	// Needs to be tagged with a listener
+	if request.Listener == "" {
+		return nil
+	}
+
+	// Create response channel
+	response := make(chan *RxPacket, 1)
+
+	// Create a callback function
+	listener_func := func(r *RxPacket) {
+
+		// Unbind the listener
+		delete(conn.Listeners, request.Listener)
+
+		// Return the callback
+		response <- r
+	}
+
+	// Bind the listener
+	conn.Listeners[request.Listener] = &Listener{
+		Opcode:  reply_opcode,
+		Handler: listener_func,
+	}
+
+	// Send the packet
+	go conn.Write(request)
+
+	// Wait for the response
+	return <-response
 }

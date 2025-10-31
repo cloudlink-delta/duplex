@@ -7,31 +7,40 @@ import (
 	peer "github.com/muka/peerjs-go"
 )
 
+type Listener struct {
+	Opcode  string
+	Handler func(*RxPacket)
+}
+
 // Peer is a representation of a peer connection for a duplex instance.
 type Peer struct {
-	Parent               *Instance      // Pointer to the parent instance that created this peer
-	Lock                 *sync.Mutex    // Lock for transmit thread safety
-	KeyStore             map[string]any // Map of key-value pairs of any type
-	*peer.DataConnection                // Pointer to the peer data connection
+	Parent               *Instance            // Pointer to the parent instance that created this peer
+	Lock                 *sync.Mutex          // Lock for transmit thread safety
+	KeyStore             map[string]any       // Map of key-value pairs of any type
+	Listeners            map[string]*Listener // Map of key-value pairs to listeners.
+	Features             []string             // List of features advertised by this peer
+	*peer.DataConnection                      // Pointer to the peer data connection
 }
 
 // Instance is a representation of a duplex instance.
 type Instance struct {
-	Name             string
-	Handler          *peer.Peer
-	Close            chan bool
-	Done             chan bool
-	RetryCounter     int
-	MaxRetries       int
-	Peers            Peers
-	AfterNegotiation func(*Peer)
-	OnOpen           func(*Peer)
-	OnClose          func(*Peer)
-	CustomHandlers   map[string]func(*Peer, *RxPacket)
-	RemappedHandlers map[string]func(*Peer, *RxPacket)
-	IsBridge         bool
-	IsRelay          bool
-	IsDiscovery      bool
+	Name                             string
+	Handler                          *peer.Peer
+	Close                            chan bool
+	Done                             chan bool
+	RetryCounter                     int
+	MaxRetries                       int
+	Peers                            Peers
+	AfterNegotiation                 func(*Peer)
+	OnOpen                           func(*Peer)
+	OnClose                          func(*Peer)
+	CustomHandlersRequiredFeatures   map[string][]string
+	CustomHandlers                   map[string]func(*Peer, *RxPacket)
+	RemappedHandlersRequiredFeatures map[string][]string
+	RemappedHandlers                 map[string]func(*Peer, *RxPacket)
+	IsBridge                         bool
+	IsRelay                          bool
+	IsDiscovery                      bool
 }
 
 type Packet struct {

@@ -38,15 +38,17 @@ func New(ID string) *Instance {
 	}
 
 	instance := &Instance{
-		Name:             ID,
-		Handler:          serverPeer,
-		Close:            make(chan bool),
-		Done:             make(chan bool),
-		RetryCounter:     0,
-		MaxRetries:       5,
-		Peers:            make(Peers),
-		CustomHandlers:   make(map[string]func(*Peer, *RxPacket)),
-		RemappedHandlers: make(map[string]func(*Peer, *RxPacket)),
+		Name:                             ID,
+		Handler:                          serverPeer,
+		Close:                            make(chan bool),
+		Done:                             make(chan bool),
+		RetryCounter:                     0,
+		MaxRetries:                       5,
+		Peers:                            make(Peers),
+		CustomHandlersRequiredFeatures:   make(map[string][]string),
+		CustomHandlers:                   make(map[string]func(*Peer, *RxPacket)),
+		RemappedHandlersRequiredFeatures: make(map[string][]string),
+		RemappedHandlers:                 make(map[string]func(*Peer, *RxPacket)),
 	}
 
 	return instance
@@ -131,20 +133,26 @@ func (i *Instance) PeerHandler(conn *Peer) {
 	})
 }
 
-func (i *Instance) Bind(opcode string, handler func(*Peer, *RxPacket)) {
+func (i *Instance) Bind(opcode string, handler func(*Peer, *RxPacket), required_features ...string) {
 	if _, exists := i.CustomHandlers[opcode]; exists {
 		log.Printf("Handler for opcode %s already exists", opcode)
 		return
 	}
 	i.CustomHandlers[opcode] = handler
+	if len(required_features) > 0 {
+		i.CustomHandlersRequiredFeatures[opcode] = required_features
+	}
 }
 
-func (i *Instance) Remap(opcode string, handler func(*Peer, *RxPacket)) {
+func (i *Instance) Remap(opcode string, handler func(*Peer, *RxPacket), required_features ...string) {
 	if _, exists := i.RemappedHandlers[opcode]; exists {
 		log.Printf("Remapped handler for opcode %s already exists", opcode)
 		return
 	}
 	i.RemappedHandlers[opcode] = handler
+	if len(required_features) > 0 {
+		i.RemappedHandlersRequiredFeatures[opcode] = required_features
+	}
 }
 
 func (i *Instance) Unbind(opcode string) {
