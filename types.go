@@ -15,7 +15,7 @@ type Listener struct {
 // Peer is a representation of a peer connection for a duplex instance.
 type Peer struct {
 	Parent               *Instance            // Pointer to the parent instance that created this peer
-	Lock                 *sync.Mutex          // Lock for transmit thread safety
+	Lock                 *sync.Mutex          // Lock for thread safety
 	KeyStore             map[string]any       // Map of key-value pairs of any type
 	Listeners            map[string]*Listener // Map of key-value pairs to listeners.
 	Features             []string             // List of features advertised by this peer
