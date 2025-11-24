@@ -12,11 +12,17 @@ import (
 type Peers map[string]*Peer
 type PeerSlice []*Peer
 
-func New(ID string) *Instance {
+func New(ID string, hostname ...string) *Instance {
 	config := peer.NewOptions()
 	config.PingInterval = 500
 	config.Debug = 2
-	config.Host = "peerjs.mikedev101.cc"
+
+	if len(hostname) > 0 {
+		config.Host = hostname[0]
+	} else {
+		config.Host = "peerjs.mikedev101.cc"
+	}
+
 	config.Port = 443
 	config.Secure = true
 	config.Configuration.ICEServers = []webrtc.ICEServer{
