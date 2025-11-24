@@ -33,8 +33,7 @@ func New(ID string) *Instance {
 	log.Println("Opening peer...")
 	serverPeer, err := peer.NewPeer(ID, config)
 	if err != nil {
-		log.Println(err)
-		return nil
+		panic(err)
 	}
 
 	instance := &Instance{
