@@ -1,9 +1,11 @@
 package duplex
 
 import (
+	"fmt"
 	"log"
 	"slices"
 	"sync"
+	"time"
 
 	peer "github.com/muka/peerjs-go"
 	"github.com/pion/webrtc/v3"
@@ -14,7 +16,7 @@ type PeerSlice []*Peer
 
 func New(ID string, hostname ...string) *Instance {
 	config := peer.NewOptions()
-	config.PingInterval = 500
+	config.PingInterval = 1000
 	config.Debug = 2
 
 	if len(hostname) > 0 {
@@ -37,10 +39,41 @@ func New(ID string, hostname ...string) *Instance {
 	}
 
 	log.Println("Opening peer...")
-	serverPeer, err := peer.NewPeer(ID, config)
+
+	var serverPeer *peer.Peer
+	var err error
+
+	for i := range 5 {
+		type result struct {
+			p   *peer.Peer
+			err error
+		}
+		c := make(chan result, 1)
+		go func() {
+			p, e := peer.NewPeer(ID, config)
+			c <- result{p, e}
+		}()
+
+		select {
+		case res := <-c:
+			err = res.err
+			if err == nil {
+				serverPeer = res.p
+				goto Success
+			}
+		case <-time.After(10 * time.Second):
+			err = fmt.Errorf("connection timed out")
+		}
+
+		log.Printf("Failed to open peer (attempt %d/5): %v", i+1, err)
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
 		panic(err)
 	}
+
+Success:
 
 	instance := &Instance{
 		Name:                             ID,
