@@ -21,17 +21,31 @@ func (c *Peer) Write(packet *TxPacket) {
 }
 
 func (c *Peer) Read(data any) *RxPacket {
-
-	// 1. First Unmarshal: Decode the outer JSON string into a Go string
-	var jsonPayload string
-	if err := json.Unmarshal(data.([]uint8), &jsonPayload); err != nil {
-		log.Println("Error unmarshaling outer layer:", err)
-		return nil
+	var raw []byte
+	switch v := data.(type) {
+	case []byte:
+		raw = v
+	case string:
+		raw = []byte(v)
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			log.Printf("Unsupported data type %T and failed to marshal: %v", v, err)
+			return nil
+		}
+		raw = b
 	}
 
-	// 2. Second Unmarshal: Parse the actual payload string into the RxPacket struct
+	// 1. Attempt to decode as a JSON string (e.g. if sent from JS client with double encoding)
+	var jsonString string
+	if err := json.Unmarshal(raw, &jsonString); err == nil {
+		// It was a JSON string, so update raw to the inner JSON
+		raw = []byte(jsonString)
+	}
+
+	// 2. Decode into the RxPacket struct
 	var packet RxPacket
-	if err := json.Unmarshal([]byte(jsonPayload), &packet); err != nil {
+	if err := json.Unmarshal(raw, &packet); err != nil {
 		log.Println("Error unmarshaling inner packet:", err)
 		return nil
 	}

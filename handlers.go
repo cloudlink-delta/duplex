@@ -145,8 +145,10 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 	// Store our advertised features
 	conn.Features = advertised_features
 
-	// Reply with our capabilities and version
-	conn.SendNegotiate(reader)
+	// Reply with our capabilities and version if we are the responder
+	if !conn.IsInitiator {
+		conn.SendNegotiate(reader)
+	}
 
 	if fn := conn.Parent.AfterNegotiation; fn != nil {
 		fn(conn)

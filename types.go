@@ -19,6 +19,7 @@ type Peer struct {
 	KeyStore             map[string]any       // Map of key-value pairs of any type
 	Listeners            map[string]*Listener // Map of key-value pairs to listeners.
 	Features             []string             // List of features advertised by this peer
+	IsInitiator          bool                 // True if this peer initiated the connection
 	*peer.DataConnection                      // Pointer to the peer data connection
 }
 
@@ -31,6 +32,7 @@ type Instance struct {
 	RetryCounter                     int
 	MaxRetries                       int
 	Peers                            Peers
+	OnCreate                         func()
 	AfterNegotiation                 func(*Peer)
 	OnOpen                           func(*Peer)
 	OnClose                          func(*Peer)

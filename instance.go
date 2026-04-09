@@ -114,6 +114,8 @@ func (i *Instance) Run() {
 				Parent:         i,
 				Lock:           &sync.Mutex{},
 				KeyStore:       make(map[string]any),
+				Listeners:      make(map[string]*Listener), // Initialize to prevent assignment panics
+				IsInitiator:    false,
 			}
 			i.PeerHandler(p)
 		default:
@@ -128,6 +130,9 @@ func (i *Instance) Run() {
 	provider.On("open", func(data any) {
 		i.RetryCounter = 0
 		log.Printf("Peer opened as %s", i.Name)
+		if fn := i.OnCreate; fn != nil {
+			fn()
+		}
 	})
 
 	provider.On("close", func(data any) {
@@ -139,11 +144,45 @@ func (i *Instance) Run() {
 	log.Println("\nPeer got close signal")
 }
 
+func (i *Instance) Connect(id string) *Peer {
+	options := peer.NewConnectionOptions()
+	options.Label = "default"
+	options.Reliable = true
+	options.Serialization = "json"
+	options.Metadata = map[string]any{
+		"protocol": "delta",
+		"name":     i.Name,
+	}
+
+	conn, err := i.Handler.Connect(id, options)
+	if err != nil {
+		log.Printf("Failed to connect to peer %s: %v", id, err)
+		return nil
+	}
+
+	p := &Peer{
+		DataConnection: conn,
+		Parent:         i,
+		Lock:           &sync.Mutex{},
+		KeyStore:       make(map[string]any),
+		Listeners:      make(map[string]*Listener),
+		IsInitiator:    true,
+	}
+
+	i.PeerHandler(p)
+	return p
+}
+
 func (i *Instance) PeerHandler(conn *Peer) {
 	conn.On("open", func(data any) {
 		log.Printf("%s connected", conn.GiveName())
 		log.Printf("%s metadata: %v", conn.GiveName(), conn.Metadata)
 		i.Peers[conn.GetPeerID()] = conn
+
+		if conn.IsInitiator {
+			conn.SendNegotiate(&RxPacket{})
+		}
+
 		if fn := i.OnOpen; fn != nil {
 			fn(conn)
 		}
