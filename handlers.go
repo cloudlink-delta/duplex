@@ -41,9 +41,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 
 	// Listener handlers take second priority
 	if listener, ok := conn.Listeners[r.Listener]; ok {
-		if r.Opcode == listener.Opcode {
-			listener.Handler(r)
-		}
+		listener(r)
 		return
 	}
 
@@ -214,7 +212,7 @@ func (conn *Peer) SendNegotiate(r *RxPacket) {
 // The function will also return nil if the packet is not tagged with a listener string.
 // The function will block until the response is received or the underlying connection is closed.
 // The function is safe for concurrent use.
-func (conn *Peer) SendAndWaitForReply(reply_opcode string, request *TxPacket) *RxPacket {
+func (conn *Peer) SendAndWaitForReply(request *TxPacket) *RxPacket {
 
 	// Needs to be tagged with a listener
 	if request.Listener == "" {
@@ -235,10 +233,7 @@ func (conn *Peer) SendAndWaitForReply(reply_opcode string, request *TxPacket) *R
 	}
 
 	// Bind the listener
-	conn.Listeners[request.Listener] = &Listener{
-		Opcode:  reply_opcode,
-		Handler: listener_func,
-	}
+	conn.Listeners[request.Listener] = listener_func
 
 	// Send the packet
 	go conn.Write(request)
