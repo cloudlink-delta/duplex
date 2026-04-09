@@ -12,7 +12,6 @@ import (
 )
 
 type Config struct {
-	ID         string
 	Hostname   string
 	Secure     bool
 	Port       int
@@ -22,10 +21,14 @@ type Config struct {
 type Peers map[string]*Peer
 type PeerSlice []*Peer
 
-func New(args Config) *Instance {
+func New(ID string, args *Config) *Instance {
 	config := peer.NewOptions()
 	config.PingInterval = 1000
 	config.Debug = 2
+
+	if args == nil {
+		args = &Config{}
+	}
 
 	if len(args.Hostname) > 0 {
 		config.Host = args.Hostname
@@ -64,7 +67,7 @@ func New(args Config) *Instance {
 		}
 		c := make(chan result, 1)
 		go func() {
-			p, e := peer.NewPeer(args.ID, config)
+			p, e := peer.NewPeer(ID, config)
 			c <- result{p, e}
 		}()
 
@@ -90,7 +93,7 @@ func New(args Config) *Instance {
 Success:
 
 	instance := &Instance{
-		Name:                             args.ID,
+		Name:                             ID,
 		Handler:                          serverPeer,
 		Close:                            make(chan bool),
 		Done:                             make(chan bool),
