@@ -11,31 +11,45 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
+type Config struct {
+	ID         string
+	Hostname   string
+	Secure     bool
+	Port       int
+	ICEServers []webrtc.ICEServer
+}
+
 type Peers map[string]*Peer
 type PeerSlice []*Peer
 
-func New(ID string, hostname ...string) *Instance {
+func New(args Config) *Instance {
 	config := peer.NewOptions()
 	config.PingInterval = 1000
 	config.Debug = 2
 
-	if len(hostname) > 0 {
-		config.Host = hostname[0]
+	if len(args.Hostname) > 0 {
+		config.Host = args.Hostname
+		config.Secure = args.Secure
+		config.Port = args.Port
 	} else {
 		config.Host = "peerjs.mikedev101.cc"
+		config.Secure = true
+		config.Port = 443
 	}
 
-	config.Port = 443
-	config.Secure = true
-	config.Configuration.ICEServers = []webrtc.ICEServer{
-		{
-			URLs: []string{"stun:vpn.mikedev101.cc:3478", "stun:vpn.mikedev101.cc:5349"},
-		},
-		{
-			URLs:       []string{"turn:vpn.mikedev101.cc:5349", "turn:vpn.mikedev101.cc:3478"},
-			Username:   "free",
-			Credential: "free",
-		},
+	if len(args.ICEServers) > 0 {
+		config.Configuration.ICEServers = args.ICEServers
+	} else {
+		config.Configuration.ICEServers = []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:vpn.mikedev101.cc:3478", "stun:vpn.mikedev101.cc:5349"},
+			},
+			{
+				URLs:       []string{"turn:vpn.mikedev101.cc:5349", "turn:vpn.mikedev101.cc:3478"},
+				Username:   "free",
+				Credential: "free",
+			},
+		}
 	}
 
 	log.Println("Opening peer...")
@@ -50,7 +64,7 @@ func New(ID string, hostname ...string) *Instance {
 		}
 		c := make(chan result, 1)
 		go func() {
-			p, e := peer.NewPeer(ID, config)
+			p, e := peer.NewPeer(args.ID, config)
 			c <- result{p, e}
 		}()
 
@@ -76,7 +90,7 @@ func New(ID string, hostname ...string) *Instance {
 Success:
 
 	instance := &Instance{
-		Name:                             ID,
+		Name:                             args.ID,
 		Handler:                          serverPeer,
 		Close:                            make(chan bool),
 		Done:                             make(chan bool),
