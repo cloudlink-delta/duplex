@@ -116,6 +116,7 @@ func (i *Instance) Run() {
 				KeyStore:       make(map[string]any),
 				Listeners:      make(map[string]*Listener), // Initialize to prevent assignment panics
 				IsInitiator:    false,
+				Done:           make(chan bool),
 			}
 			i.PeerHandler(p)
 		default:
@@ -167,6 +168,7 @@ func (i *Instance) Connect(id string) *Peer {
 		KeyStore:       make(map[string]any),
 		Listeners:      make(map[string]*Listener),
 		IsInitiator:    true,
+		Done:           make(chan bool),
 	}
 
 	i.PeerHandler(p)
@@ -181,6 +183,26 @@ func (i *Instance) PeerHandler(conn *Peer) {
 
 		if conn.IsInitiator {
 			conn.SendNegotiate(&RxPacket{})
+
+			// Start periodic ping
+			go func() {
+				ticker := time.NewTicker(10 * time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ticker.C:
+						conn.Write(&TxPacket{
+							Packet: Packet{
+								Opcode: "PING",
+								TTL:    1,
+							},
+							Payload: map[string]int64{"t1": time.Now().UnixNano() / 1000000},
+						})
+					case <-conn.Done:
+						return
+					}
+				}
+			}()
 		}
 
 		if fn := i.OnOpen; fn != nil {
@@ -191,6 +213,11 @@ func (i *Instance) PeerHandler(conn *Peer) {
 	conn.On("close", func(data any) {
 		log.Printf("%s disconnected", conn.GiveName())
 		delete(i.Peers, conn.GetPeerID())
+		select {
+		case <-conn.Done:
+		default:
+			close(conn.Done) // Signal all goroutines tied to this peer to cleanly exit
+		}
 		if fn := i.OnClose; fn != nil {
 			fn(conn)
 		}

@@ -40,7 +40,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 	}
 
 	// Listener handlers take second priority
-	if listener, ok := conn.Listeners[r.Opcode]; ok {
+	if listener, ok := conn.Listeners[r.Listener]; ok {
 		if r.Opcode == listener.Opcode {
 			listener.Handler(r)
 		}
@@ -84,6 +84,23 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 				T2: now,
 			},
 		})
+
+	case "PONG":
+
+		type PongReply struct {
+			T1 int64 `json:"t1"`
+			T2 int64 `json:"t2"`
+		}
+
+		var reply PongReply
+		err := json.Unmarshal(r.Payload, &reply)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		now := time.Now().UnixNano() / 1000000
+		log.Printf("%s latency: %dms", conn.GiveName(), now-reply.T1)
 
 	default:
 

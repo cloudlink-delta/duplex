@@ -20,6 +20,7 @@ type Peer struct {
 	Listeners            map[string]*Listener // Map of key-value pairs to listeners.
 	Features             []string             // List of features advertised by this peer
 	IsInitiator          bool                 // True if this peer initiated the connection
+	Done                 chan bool            // Channel to signal connection closure
 	*peer.DataConnection                      // Pointer to the peer data connection
 }
 
