@@ -16,7 +16,7 @@ func (c *Peer) Write(packet *TxPacket) {
 
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
-	log.Printf("%s 🢀 %v", c.GiveName(), packet)
+	log.Printf("%s 🢀  %v", c.GiveName(), packet)
 	c.Send(resp, true)
 }
 

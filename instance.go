@@ -249,7 +249,7 @@ func (i *Instance) PeerHandler(conn *Peer) {
 		if packet == nil {
 			return
 		}
-		log.Printf("%s 🢂 %v", conn.GiveName(), packet)
+		log.Printf("%s 🢂  %v", conn.GiveName(), packet)
 		go conn.HandlePacket(packet)
 	})
 }
