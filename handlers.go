@@ -106,7 +106,10 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 		}
 
 		now := time.Now().UnixNano() / 1000000
-		log.Printf("%s latency: %dms", conn.GiveName(), now-reply.T1)
+		rtt := now - reply.T1
+		conn.RTT = rtt
+
+		log.Printf("%s latency: %dms", conn.GiveName(), rtt)
 
 	default:
 

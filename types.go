@@ -26,6 +26,7 @@ type Peer struct {
 	IsRelay              bool                     // True if this peer is a relay
 	IsDiscovery          bool                     // True if this peer is a discovery
 	Done                 chan bool                // Channel to signal connection closure
+	RTT                  int64                    // Round-trip time (in milliseconds)
 	*peer.DataConnection                          // Pointer to the peer data connection
 }
 

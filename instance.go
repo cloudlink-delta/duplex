@@ -194,6 +194,25 @@ func (i *Instance) Connect(id string) *Peer {
 	return p
 }
 
+func (i *Instance) SpawnTicker(conn *Peer) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			conn.Write(&TxPacket{
+				Packet: Packet{
+					Opcode: "PING",
+					TTL:    1,
+				},
+				Payload: map[string]int64{"t1": time.Now().UnixNano() / 1000000},
+			})
+		case <-conn.Done:
+			return
+		}
+	}
+}
+
 func (i *Instance) PeerHandler(conn *Peer) {
 	conn.On("open", func(data any) {
 		log.Printf("%s connected", conn.GiveName())
@@ -204,24 +223,7 @@ func (i *Instance) PeerHandler(conn *Peer) {
 			conn.SendNegotiate(&RxPacket{})
 
 			// Start periodic ping
-			go func() {
-				ticker := time.NewTicker(10 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-ticker.C:
-						conn.Write(&TxPacket{
-							Packet: Packet{
-								Opcode: "PING",
-								TTL:    1,
-							},
-							Payload: map[string]int64{"t1": time.Now().UnixNano() / 1000000},
-						})
-					case <-conn.Done:
-						return
-					}
-				}
-			}()
+			go i.SpawnTicker(conn)
 		}
 
 		if fn := i.OnOpen; fn != nil {

@@ -3,6 +3,7 @@ package duplex
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/goccy/go-json"
 )
@@ -19,6 +20,33 @@ func (c *Peer) Write(packet *TxPacket) {
 	defer c.Lock.Unlock()
 	log.Printf("%s 🢀  %v", c.GiveName(), packet)
 	c.Send(resp, true)
+}
+
+// WriteBlocking is a variant of Write that has a blocking mode that exits when
+// it has finished sending the entire message to the recipient.
+func (c *Peer) WriteBlocking(packet *TxPacket) {
+	resp, err := json.Marshal(packet)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	c.Lock.Lock()
+	log.Printf("%s 🢀  %v", c.GiveName(), packet)
+	c.Send(resp, true)
+	c.Lock.Unlock()
+
+	// Wait until the buffer is flushed (the message is fully sent)
+	if c.DataChannel != nil {
+		for c.DataChannel.BufferedAmount() > 0 {
+			select {
+			case <-c.Done:
+				return
+			default:
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}
 }
 
 // Goroutine that reads incoming messages from the peer.
