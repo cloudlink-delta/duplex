@@ -20,6 +20,9 @@ type Peer struct {
 	Listeners            map[string]*Listener // Map of key-value pairs to listeners.
 	Features             []string             // List of features advertised by this peer
 	IsInitiator          bool                 // True if this peer initiated the connection
+	IsBridge             bool                 // True if this peer is a bridge
+	IsRelay              bool                 // True if this peer is a relay
+	IsDiscovery          bool                 // True if this peer is a discovery
 	Done                 chan bool            // Channel to signal connection closure
 	*peer.DataConnection                      // Pointer to the peer data connection
 }
@@ -44,6 +47,9 @@ type Instance struct {
 	IsBridge                         bool
 	IsRelay                          bool
 	IsDiscovery                      bool
+	OnBridgeConnected                func(*Peer)
+	OnRelayConnected                 func(*Peer)
+	OnDiscoveryConnected             func(*Peer)
 }
 
 type Packet struct {

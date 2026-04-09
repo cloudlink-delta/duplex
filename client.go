@@ -7,6 +7,7 @@ import (
 	"github.com/goccy/go-json"
 )
 
+// Goroutine that writes messages to the peer.
 func (c *Peer) Write(packet *TxPacket) {
 	resp, err := json.Marshal(packet)
 	if err != nil {
@@ -20,6 +21,7 @@ func (c *Peer) Write(packet *TxPacket) {
 	c.Send(resp, true)
 }
 
+// Goroutine that reads incoming messages from the peer.
 func (c *Peer) Read(data any) *RxPacket {
 	var raw []byte
 	switch v := data.(type) {
@@ -53,6 +55,14 @@ func (c *Peer) Read(data any) *RxPacket {
 	return &packet
 }
 
+// Returns the peer's preferred ID.
 func (c *Peer) GiveName() string {
 	return fmt.Sprintf("[%s]", c.GetPeerID())
+}
+
+// Returns true if the peer does not advertise any features.
+func (c *Peer) IsClient() bool {
+	return !c.IsRelay &&
+		!c.IsDiscovery &&
+		!c.IsBridge
 }

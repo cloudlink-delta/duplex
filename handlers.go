@@ -144,15 +144,15 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 	var advertised_features []string
 	if arguments.IsBridge {
 		advertised_features = append(advertised_features, "bridge")
-		// TODO: request list of bridged peers and their CL versions/dialects for translation
+		conn.IsBridge = true
 	}
 	if arguments.IsRelay {
 		advertised_features = append(advertised_features, "relay")
-		// TODO: reconfigure routes to use relay for broadcasts
+		conn.IsRelay = true
 	}
 	if arguments.IsDiscovery {
 		advertised_features = append(advertised_features, "discovery")
-		// TODO: verify authenticity of discovery server
+		conn.IsDiscovery = true
 	}
 
 	if len(advertised_features) > 0 {
@@ -167,8 +167,18 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 		conn.SendNegotiate(reader)
 	}
 
+	// Run callbacks
 	if fn := conn.Parent.AfterNegotiation; fn != nil {
-		fn(conn)
+		go fn(conn)
+	}
+	if fn := conn.Parent.OnBridgeConnected; fn != nil && arguments.IsBridge {
+		go fn(conn)
+	}
+	if fn := conn.Parent.OnRelayConnected; fn != nil && arguments.IsRelay {
+		go fn(conn)
+	}
+	if fn := conn.Parent.OnDiscoveryConnected; fn != nil && arguments.IsDiscovery {
+		go fn(conn)
 	}
 }
 
