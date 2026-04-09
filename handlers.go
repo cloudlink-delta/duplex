@@ -45,6 +45,14 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 		return
 	}
 
+	// Matchers briefly take priority for individual connections
+	if matcher, ok := conn.OpcodeMatchers[conn]; ok {
+		if slices.Contains(matcher.Opcodes, r.Opcode) {
+			matcher.Callback(r)
+			return
+		}
+	}
+
 	// Process builtin opcodes first
 	switch r.Opcode {
 	case "NEGOTIATE":
@@ -239,5 +247,30 @@ func (conn *Peer) SendAndWaitForReply(request *TxPacket) *RxPacket {
 	go conn.Write(request)
 
 	// Wait for the response
+	return <-response
+}
+
+// Creates a callback that fires whenever a specific connection receives a specific packet opcode.
+func (conn *Peer) WaitForMatchedPacket(opcodes ...string) *RxPacket {
+
+	// Create response channel
+	response := make(chan *RxPacket, 1)
+
+	// Create a callback function
+	listener_func := func(r *RxPacket) {
+
+		// Unbind the listener
+		delete(conn.OpcodeMatchers, conn)
+
+		response <- r
+	}
+
+	conn.OpcodeMatchers[conn] = &OpcodeMatcher{
+		Opcodes:  opcodes,
+		Callback: listener_func,
+	}
+
+	// Now we will forever wait until the packet is received with the matched opcode
+
 	return <-response
 }

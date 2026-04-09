@@ -8,20 +8,25 @@ import (
 )
 
 type Listener func(*RxPacket)
+type OpcodeMatcher struct {
+	Opcodes  []string
+	Callback func(*RxPacket)
+}
 
 // Peer is a representation of a peer connection for a duplex instance.
 type Peer struct {
-	Parent               *Instance           // Pointer to the parent instance that created this peer
-	Lock                 *sync.Mutex         // Lock for thread safety
-	KeyStore             map[string]any      // Map of key-value pairs of any type
-	Listeners            map[string]Listener // Map of key-value pairs to listeners.
-	Features             []string            // List of features advertised by this peer
-	IsInitiator          bool                // True if this peer initiated the connection
-	IsBridge             bool                // True if this peer is a bridge
-	IsRelay              bool                // True if this peer is a relay
-	IsDiscovery          bool                // True if this peer is a discovery
-	Done                 chan bool           // Channel to signal connection closure
-	*peer.DataConnection                     // Pointer to the peer data connection
+	Parent               *Instance                // Pointer to the parent instance that created this peer
+	Lock                 *sync.Mutex              // Lock for thread safety
+	KeyStore             map[string]any           // Map of key-value pairs of any type
+	OpcodeMatchers       map[*Peer]*OpcodeMatcher // Map of key-value pairs to listen to specific opcodes from specific peers.
+	Listeners            map[string]Listener      // Map of key-value pairs to listeners.
+	Features             []string                 // List of features advertised by this peer
+	IsInitiator          bool                     // True if this peer initiated the connection
+	IsBridge             bool                     // True if this peer is a bridge
+	IsRelay              bool                     // True if this peer is a relay
+	IsDiscovery          bool                     // True if this peer is a discovery
+	Done                 chan bool                // Channel to signal connection closure
+	*peer.DataConnection                          // Pointer to the peer data connection
 }
 
 // Instance is a representation of a duplex instance.

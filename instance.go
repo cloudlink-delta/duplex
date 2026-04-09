@@ -131,7 +131,8 @@ func (i *Instance) Run() {
 				Parent:         i,
 				Lock:           &sync.Mutex{},
 				KeyStore:       make(map[string]any),
-				Listeners:      make(map[string]Listener), // Initialize to prevent assignment panics
+				OpcodeMatchers: make(map[*Peer]*OpcodeMatcher),
+				Listeners:      make(map[string]Listener),
 				IsInitiator:    false,
 				Done:           make(chan bool),
 			}
@@ -183,6 +184,7 @@ func (i *Instance) Connect(id string) *Peer {
 		Parent:         i,
 		Lock:           &sync.Mutex{},
 		KeyStore:       make(map[string]any),
+		OpcodeMatchers: make(map[*Peer]*OpcodeMatcher),
 		Listeners:      make(map[string]Listener),
 		IsInitiator:    true,
 		Done:           make(chan bool),
