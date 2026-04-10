@@ -2,6 +2,7 @@ package duplex
 
 import (
 	"sync"
+	"time"
 
 	"github.com/goccy/go-json"
 	peer "github.com/muka/peerjs-go"
@@ -33,6 +34,8 @@ type Peer struct {
 // Instance is a representation of a duplex instance.
 type Instance struct {
 	Name                             string
+	Pinger                           bool
+	PingInterval                     time.Duration
 	Handler                          *peer.Peer
 	Close                            chan bool
 	Done                             chan bool

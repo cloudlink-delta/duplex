@@ -28,7 +28,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 
 			// Check if the peer has all the required features
 			for _, feature := range required_features {
-				if slices.Contains(conn.Features, feature) {
+				if !slices.Contains(conn.Features, feature) {
 					log.Printf("%s dropped packet \"%s\": missing required feature %s", conn.GiveName(), r.Opcode, feature)
 					return
 				}
@@ -120,11 +120,16 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 			if required_features := conn.Parent.CustomHandlersRequiredFeatures[r.Opcode]; len(required_features) > 0 {
 
 				// Check if the peer has all the required features
+				var match_found bool
 				for _, feature := range required_features {
-					if slices.Contains(conn.Features, feature) {
-						log.Printf("%s dropped packet \"%s\": missing required feature %s", conn.GiveName(), r.Opcode, feature)
-						return
+					if slices.Contains(conn.Features, feature) && !match_found {
+						match_found = true
 					}
+				}
+
+				if !match_found {
+					log.Printf("%s dropped packet \"%s\": client is missing any of the required feature(s): %v", conn.GiveName(), r.Opcode, required_features)
+					return
 				}
 			}
 
@@ -193,7 +198,7 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 
 // SendNegotiate sends a NEGOTIATE packet to a newly connected peer.
 func (conn *Peer) SendNegotiate(r *RxPacket) {
-	conn.Write(&TxPacket{
+	conn.WriteBlocking(&TxPacket{
 		Packet: Packet{
 			Opcode:   "NEGOTIATE",
 			TTL:      1,

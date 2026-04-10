@@ -12,10 +12,13 @@ import (
 )
 
 type Config struct {
-	Hostname   string
-	Secure     bool
-	Port       int
-	ICEServers []webrtc.ICEServer
+	Hostname     string
+	Secure       bool
+	Port         int
+	ICEServers   []webrtc.ICEServer
+	EnablePinger bool
+	PingInterval int64 // in milliseconds
+	VeryVerbose  bool
 }
 
 type Peers map[string]*Peer
@@ -23,11 +26,15 @@ type PeerSlice []*Peer
 
 func New(ID string, args *Config) *Instance {
 	config := peer.NewOptions()
-	config.PingInterval = 1000
-	config.Debug = 2
 
 	if args == nil {
 		args = &Config{}
+	}
+
+	if args.VeryVerbose {
+		config.Debug = 3
+	} else {
+		config.Debug = 2
 	}
 
 	if len(args.Hostname) > 0 {
@@ -68,7 +75,27 @@ func New(ID string, args *Config) *Instance {
 		c := make(chan result, 1)
 		go func() {
 			p, e := peer.NewPeer(ID, config)
-			c <- result{p, e}
+			if e != nil {
+				c <- result{nil, e}
+				return
+			}
+
+			wait := make(chan error, 1)
+			var once sync.Once
+
+			p.On("open", func(data any) {
+				once.Do(func() { wait <- nil })
+			})
+			p.On("error", func(data any) {
+				once.Do(func() { wait <- fmt.Errorf("%v", data) })
+			})
+
+			if e = <-wait; e != nil {
+				p.Destroy()
+				c <- result{nil, e}
+			} else {
+				c <- result{p, nil}
+			}
 		}()
 
 		select {
@@ -94,6 +121,8 @@ Success:
 
 	instance := &Instance{
 		Name:                             ID,
+		Pinger:                           args.EnablePinger,
+		PingInterval:                     time.Duration(args.PingInterval) * time.Millisecond,
 		Handler:                          serverPeer,
 		Close:                            make(chan bool),
 		Done:                             make(chan bool),
@@ -146,13 +175,22 @@ func (i *Instance) Run() {
 		log.Printf("Peer error: %v", data)
 	})
 
+	var once sync.Once
+	triggerOpen := func() {
+		once.Do(func() {
+			i.RetryCounter = 0
+			log.Printf("Peer opened as %s", i.Name)
+			if fn := i.OnCreate; fn != nil {
+				fn()
+			}
+		})
+	}
+
 	provider.On("open", func(data any) {
-		i.RetryCounter = 0
-		log.Printf("Peer opened as %s", i.Name)
-		if fn := i.OnCreate; fn != nil {
-			fn()
-		}
+		triggerOpen()
 	})
+
+	triggerOpen()
 
 	provider.On("close", func(data any) {
 		log.Println("Peer closed")
@@ -195,7 +233,10 @@ func (i *Instance) Connect(id string) *Peer {
 }
 
 func (i *Instance) SpawnTicker(conn *Peer) {
-	ticker := time.NewTicker(10 * time.Second)
+	if !i.Pinger {
+		return
+	}
+	ticker := time.NewTicker(i.PingInterval)
 	defer ticker.Stop()
 	for {
 		select {

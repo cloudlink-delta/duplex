@@ -37,8 +37,8 @@ func (c *Peer) WriteBlocking(packet *TxPacket) {
 	c.Lock.Unlock()
 
 	// Wait until the buffer is flushed (the message is fully sent)
-	if c.DataChannel != nil {
-		for c.DataChannel.BufferedAmount() > 0 {
+	if dc := c.DataChannel; dc != nil {
+		for dc.BufferedAmount() > 0 {
 			select {
 			case <-c.Done:
 				return
