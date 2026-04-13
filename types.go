@@ -57,8 +57,6 @@ type Instance struct {
 	OnRelayConnected                 func(*Peer)
 	OnDiscoveryConnected             func(*Peer)
 	isReconnecting                   bool
-	retryCount                       int
-	maxRetries                       int
 	mu                               sync.Mutex
 }
 
