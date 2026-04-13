@@ -258,6 +258,12 @@ func (i *Instance) Run() {
 				fn()
 			}
 		})
+		i.mu.Lock()
+		if i.isReconnecting {
+			i.isReconnecting = false
+			i.RetryCounter = 0
+		}
+		i.mu.Unlock()
 	}
 
 	provider.On("open", func(data any) {
