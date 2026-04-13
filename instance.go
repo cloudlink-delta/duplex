@@ -8,6 +8,7 @@ import (
 	"time"
 
 	peer "github.com/muka/peerjs-go"
+	"github.com/muka/peerjs-go/enums"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -148,6 +149,53 @@ func (p *Peers) ToSlice(exclusions ...*Peer) PeerSlice {
 	return peers
 }
 
+func (i *Instance) AttemptReconnect() {
+	i.mu.Lock()
+	if i.isReconnecting || i.RetryCounter >= i.MaxRetries {
+		i.mu.Unlock()
+		return
+	}
+	i.isReconnecting = true
+	i.mu.Unlock()
+
+	go func() {
+		for {
+			i.mu.Lock()
+			if i.RetryCounter >= i.MaxRetries {
+				log.Printf("Max reconnect attempts (%d) reached. Giving up.", i.MaxRetries)
+				i.isReconnecting = false
+				i.mu.Unlock()
+				return
+			}
+			i.RetryCounter++
+			currentAttempt := i.RetryCounter
+			i.mu.Unlock()
+
+			log.Printf("Attempting session reconnect #%d/%d...", currentAttempt, i.MaxRetries)
+
+			err := i.Handler.Reconnect()
+			if err == nil {
+				// If Reconnect() didn't return an immediate error,
+				// we wait to see if the "open" event fires.
+				// We sleep here to prevent rapid-fire attempts if the socket
+				// opens but immediately closes again.
+				time.Sleep(5 * time.Second)
+			} else {
+				log.Printf("Reconnect call failed: %v", err)
+				time.Sleep(5 * time.Second)
+			}
+
+			// Check if we were successful (the 'open' handler resets isReconnecting)
+			i.mu.Lock()
+			if !i.isReconnecting {
+				i.mu.Unlock()
+				return
+			}
+			i.mu.Unlock()
+		}
+	}()
+}
+
 func (i *Instance) Run() {
 	provider := i.Handler
 	defer provider.Destroy()
@@ -172,7 +220,33 @@ func (i *Instance) Run() {
 	})
 
 	provider.On("error", func(data any) {
-		log.Printf("Peer error: %v", data)
+		errMsg, ok := data.(peer.PeerError)
+		if !ok {
+			return
+		}
+
+		switch errMsg.Type {
+		case enums.PeerErrorTypeNetwork,
+			enums.PeerErrorTypeServerError,
+			enums.PeerErrorTypeSocketError,
+			enums.PeerErrorTypeSocketClosed,
+			enums.PeerErrorTypeDisconnected:
+
+			log.Printf("Recoverable error detected: %v", errMsg.Type)
+			i.AttemptReconnect()
+
+		case enums.PeerErrorTypeUnavailableID:
+			log.Println("ID already in use. Manual intervention required.")
+
+		case enums.PeerErrorTypeSslUnavailable,
+			enums.PeerErrorTypeBrowserIncompatible,
+			enums.PeerErrorTypeInvalidID,
+			enums.PeerErrorTypeInvalidKey:
+			log.Fatalf("Fatal: %v. Manual intervention required.", errMsg.Type)
+
+		default:
+			log.Printf("Non-critical or unhandled error: %v", errMsg.Type)
+		}
 	})
 
 	var once sync.Once
