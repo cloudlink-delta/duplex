@@ -85,6 +85,9 @@ func (c *Peer) Read(data any) *RxPacket {
 
 // Returns the peer's preferred ID.
 func (c *Peer) GiveName() string {
+	if c.GiveNameRemapper != nil {
+		return c.GiveNameRemapper()
+	}
 	return fmt.Sprintf("[%s]", c.GetPeerID())
 }
 

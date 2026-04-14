@@ -16,9 +16,10 @@ type OpcodeMatcher struct {
 
 // Peer is a representation of a peer connection for a duplex instance.
 type Peer struct {
-	Parent               *Instance                // Pointer to the parent instance that created this peer
-	Lock                 *sync.Mutex              // Lock for thread safety
-	KeyStore             map[string]any           // Map of key-value pairs of any type
+	Parent               *Instance      // Pointer to the parent instance that created this peer
+	Lock                 *sync.Mutex    // Lock for thread safety
+	KeyStore             map[string]any // Map of key-value pairs of any type
+	KeyLock              *sync.Mutex
 	OpcodeMatchers       map[*Peer]*OpcodeMatcher // Map of key-value pairs to listen to specific opcodes from specific peers.
 	Listeners            map[string]Listener      // Map of key-value pairs to listeners.
 	Features             []string                 // List of features advertised by this peer
@@ -28,7 +29,8 @@ type Peer struct {
 	IsDiscovery          bool                     // True if this peer is a discovery
 	Done                 chan bool                // Channel to signal connection closure
 	RTT                  int64                    // Round-trip time (in milliseconds)
-	*peer.DataConnection                          // Pointer to the peer data connection
+	GiveNameRemapper     func() string
+	*peer.DataConnection // Pointer to the peer data connection
 }
 
 // Instance is a representation of a duplex instance.
