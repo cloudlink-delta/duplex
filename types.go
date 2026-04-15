@@ -60,6 +60,12 @@ type Instance struct {
 	OnDiscoveryConnected             func(*Peer)
 	isReconnecting                   bool
 	mu                               sync.Mutex
+	active_time_start                time.Time
+}
+
+type PeerState struct {
+	Uptime          string `json:"uptime"`
+	ConnectionState bool   `json:"connection_state"`
 }
 
 type Packet struct {

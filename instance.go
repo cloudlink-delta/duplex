@@ -164,6 +164,7 @@ func (i *Instance) AttemptReconnect() {
 			if i.RetryCounter >= i.MaxRetries {
 				log.Printf("Max reconnect attempts (%d) reached. Giving up.", i.MaxRetries)
 				i.isReconnecting = false
+				i.active_time_start = time.Time{}
 				i.mu.Unlock()
 				return
 			}
@@ -264,6 +265,7 @@ func (i *Instance) Run() {
 			i.isReconnecting = false
 			i.RetryCounter = 0
 		}
+		i.active_time_start = time.Now()
 		i.mu.Unlock()
 	}
 
@@ -275,11 +277,28 @@ func (i *Instance) Run() {
 
 	provider.On("close", func(data any) {
 		log.Println("Peer closed")
+		i.mu.Lock()
+		i.active_time_start = time.Time{}
+		i.mu.Unlock()
 		i.Done <- true
 	})
 
 	<-i.Close
 	log.Println("\nPeer got close signal")
+}
+
+func (i *Instance) GetPeerState() PeerState {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	state := PeerState{
+		ConnectionState: !i.isReconnecting && !i.active_time_start.IsZero(),
+	}
+	if state.ConnectionState {
+		state.Uptime = time.Since(i.active_time_start).Round(time.Second).String()
+	}
+
+	return state
 }
 
 func (i *Instance) Connect(id string) *Peer {
