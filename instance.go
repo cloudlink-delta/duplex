@@ -130,6 +130,12 @@ func (i *Instance) AttemptReconnect() {
 		return
 	}
 	i.isReconnecting = true
+
+	// Nuke the reference immediately so nothing else uses the dead handler
+	if i.Handler != nil {
+		i.Handler.Destroy()
+		i.Handler = nil
+	}
 	i.mu.Unlock()
 
 	go func() {
@@ -140,34 +146,41 @@ func (i *Instance) AttemptReconnect() {
 
 			log.Printf("Re-initialization attempt #%d...", currentRetry+1)
 
-			// 1. Explicitly destroy the old handler to release the ID
-			i.mu.Lock()
-			if i.Handler != nil {
-				i.Handler.Destroy()
+			// 1. Create a channel to catch the setup result
+			type setupResult struct {
+				err error
 			}
-			i.mu.Unlock()
+			done := make(chan setupResult, 1)
 
-			// 2. Wait
-			time.Sleep(5 * time.Second)
+			go func() {
+				err := i.setup()
+				done <- setupResult{err}
+			}()
 
-			// 3. Try to create a brand new peer and attach listeners
-			err := i.setup()
-			if err == nil {
-				return
-			} else {
-				log.Printf("Failed to re-initialize the peer: %v", err)
+			// 2. Wait for setup or a timeout
+			select {
+			case res := <-done:
+				if res.err == nil {
+					// setup() handles resetting i.isReconnecting on "open"
+					return
+				}
+				log.Printf("Setup failed: %v", res.err)
+			case <-time.After(15 * time.Second):
+				log.Printf("Setup timed out (network still unreachable)")
 			}
 
-			// 4. Increment and check bounds
+			// 3. Prepare for next loop
 			i.mu.Lock()
 			i.RetryCounter++
 			if i.RetryCounter >= i.MaxRetries {
 				i.isReconnecting = false
 				i.mu.Unlock()
-				log.Printf("Failed to re-initialize the peer after %d attempts. Giving up.", i.MaxRetries)
 				return
 			}
 			i.mu.Unlock()
+
+			// 4. Backoff
+			time.Sleep(5 * time.Second)
 		}
 	}()
 }
