@@ -174,25 +174,27 @@ func (i *Instance) AttemptReconnect() {
 
 			log.Printf("Attempting session reconnect #%d/%d...", currentAttempt, i.MaxRetries)
 
+			// Cleanly abort any hanging connection attempt before retrying to prevent "In a hurry?" errors
+			i.Handler.Disconnect()
+			time.Sleep(1 * time.Second)
+
 			err := i.Handler.Reconnect()
-			if err == nil {
-				// If Reconnect() didn't return an immediate error,
-				// we wait to see if the "open" event fires.
-				// We sleep here to prevent rapid-fire attempts if the socket
-				// opens but immediately closes again.
-				time.Sleep(5 * time.Second)
-			} else {
+			if err != nil {
 				log.Printf("Reconnect call failed: %v", err)
-				time.Sleep(5 * time.Second)
 			}
 
-			// Check if we were successful (the 'open' handler resets isReconnecting)
+			// Wait up to 15 seconds to see if the 'open' event fires
+			for range 15 {
+				time.Sleep(1 * time.Second)
+
 			i.mu.Lock()
-			if !i.isReconnecting {
+				success := !i.isReconnecting
 				i.mu.Unlock()
+
+				if success {
 				return
 			}
-			i.mu.Unlock()
+			}
 		}
 	}()
 }
