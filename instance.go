@@ -81,8 +81,8 @@ func New(ID string, args *Config) *Instance {
 					"stun:stun3.l.google.com:5349",
 					"stun:stun4.l.google.com:19302",
 					"stun:stun4.l.google.com:5349",
-					"stun.cloudflare.com:3478",
-					"stun.cloudflare.com:53",
+					"stun:stun.cloudflare.com:3478",
+					"stun:stun.cloudflare.com:53",
 				},
 			},
 		}
