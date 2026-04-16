@@ -1,7 +1,6 @@
 package duplex
 
 import (
-	"fmt"
 	"log"
 	"slices"
 	"sync"
@@ -26,6 +25,25 @@ type Peers map[string]*Peer
 type PeerSlice []*Peer
 
 func New(ID string, args *Config) *Instance {
+	config := configure(args)
+	return &Instance{
+		Name:                             ID,
+		Pinger:                           args.EnablePinger,
+		PingInterval:                     time.Duration(args.PingInterval) * time.Millisecond,
+		Close:                            make(chan bool),
+		Done:                             make(chan bool),
+		RetryCounter:                     0,
+		MaxRetries:                       5,
+		Peers:                            make(Peers),
+		CustomHandlersRequiredFeatures:   make(map[string][]string),
+		CustomHandlers:                   make(map[string]func(*Peer, *RxPacket)),
+		RemappedHandlersRequiredFeatures: make(map[string][]string),
+		RemappedHandlers:                 make(map[string]func(*Peer, *RxPacket)),
+		peerjs_config:                    config,
+	}
+}
+
+func configure(args *Config) peer.Options {
 	config := peer.NewOptions()
 
 	if args == nil {
@@ -87,81 +105,7 @@ func New(ID string, args *Config) *Instance {
 			},
 		}
 	}
-
-	log.Println("Opening peer...")
-
-	var serverPeer *peer.Peer
-	var err error
-
-	for i := range 5 {
-		type result struct {
-			p   *peer.Peer
-			err error
-		}
-		c := make(chan result, 1)
-		go func() {
-			p, e := peer.NewPeer(ID, config)
-			if e != nil {
-				c <- result{nil, e}
-				return
-			}
-
-			wait := make(chan error, 1)
-			var once sync.Once
-
-			p.On("open", func(data any) {
-				once.Do(func() { wait <- nil })
-			})
-			p.On("error", func(data any) {
-				once.Do(func() { wait <- fmt.Errorf("%v", data) })
-			})
-
-			if e = <-wait; e != nil {
-				p.Destroy()
-				c <- result{nil, e}
-			} else {
-				c <- result{p, nil}
-			}
-		}()
-
-		select {
-		case res := <-c:
-			err = res.err
-			if err == nil {
-				serverPeer = res.p
-				goto Success
-			}
-		case <-time.After(10 * time.Second):
-			err = fmt.Errorf("connection timed out")
-		}
-
-		log.Printf("Failed to open peer (attempt %d/5): %v", i+1, err)
-		time.Sleep(2 * time.Second)
-	}
-
-	if err != nil {
-		panic(err)
-	}
-
-Success:
-
-	instance := &Instance{
-		Name:                             ID,
-		Pinger:                           args.EnablePinger,
-		PingInterval:                     time.Duration(args.PingInterval) * time.Millisecond,
-		Handler:                          serverPeer,
-		Close:                            make(chan bool),
-		Done:                             make(chan bool),
-		RetryCounter:                     0,
-		MaxRetries:                       5,
-		Peers:                            make(Peers),
-		CustomHandlersRequiredFeatures:   make(map[string][]string),
-		CustomHandlers:                   make(map[string]func(*Peer, *RxPacket)),
-		RemappedHandlersRequiredFeatures: make(map[string][]string),
-		RemappedHandlers:                 make(map[string]func(*Peer, *RxPacket)),
-	}
-
-	return instance
+	return config
 }
 
 func (p *Peers) ToSlice(exclusions ...*Peer) PeerSlice {
@@ -176,7 +120,12 @@ func (p *Peers) ToSlice(exclusions ...*Peer) PeerSlice {
 
 func (i *Instance) AttemptReconnect() {
 	i.mu.Lock()
-	if i.isReconnecting || i.RetryCounter >= i.MaxRetries {
+	if i.isReconnecting {
+		i.mu.Unlock()
+		return
+	}
+	if i.RetryCounter >= i.MaxRetries {
+		log.Printf("Max retries (%d) reached. Giving up.", i.MaxRetries)
 		i.mu.Unlock()
 		return
 	}
@@ -186,51 +135,54 @@ func (i *Instance) AttemptReconnect() {
 	go func() {
 		for {
 			i.mu.Lock()
-			if i.RetryCounter >= i.MaxRetries {
-				log.Printf("Max reconnect attempts (%d) reached. Giving up.", i.MaxRetries)
-				i.isReconnecting = false
-				i.active_time_start = time.Time{}
-				i.mu.Unlock()
-				return
-			}
-			i.RetryCounter++
-			currentAttempt := i.RetryCounter
+			currentRetry := i.RetryCounter
 			i.mu.Unlock()
 
-			log.Printf("Attempting session reconnect #%d/%d...", currentAttempt, i.MaxRetries)
+			log.Printf("Re-initialization attempt #%d...", currentRetry+1)
 
-			// Cleanly abort any hanging connection attempt before retrying to prevent "In a hurry?" errors
-			i.Handler.Disconnect()
-			time.Sleep(1 * time.Second)
+			// 1. Explicitly destroy the old handler to release the ID
+			i.mu.Lock()
+			if i.Handler != nil {
+				i.Handler.Destroy()
+			}
+			i.mu.Unlock()
 
-			err := i.Handler.Reconnect()
-			if err != nil {
-				log.Printf("Reconnect call failed: %v", err)
+			// 2. Wait
+			time.Sleep(5 * time.Second)
+
+			// 3. Try to create a brand new peer and attach listeners
+			err := i.setup()
+			if err == nil {
+				return
+			} else {
+				log.Printf("Failed to re-initialize the peer: %v", err)
 			}
 
-			// Wait up to 15 seconds to see if the 'open' event fires
-			for range 15 {
-				time.Sleep(1 * time.Second)
-
-				i.mu.Lock()
-				success := !i.isReconnecting
+			// 4. Increment and check bounds
+			i.mu.Lock()
+			i.RetryCounter++
+			if i.RetryCounter >= i.MaxRetries {
+				i.isReconnecting = false
 				i.mu.Unlock()
-
-				if success {
-					return
-				}
+				log.Printf("Failed to re-initialize the peer after %d attempts. Giving up.", i.MaxRetries)
+				return
 			}
+			i.mu.Unlock()
 		}
 	}()
 }
 
-func (i *Instance) Run() {
-	provider := i.Handler
-	defer provider.Destroy()
+func (i *Instance) setup() error {
 
-	provider.On("connection", func(data any) {
-		switch c := data.(type) {
-		case *peer.DataConnection:
+	// 1. Create the Peer
+	p, err := peer.NewPeer(i.Name, i.peerjs_config)
+	if err != nil {
+		return err
+	}
+
+	// 2. Bind Connection Listener
+	p.On("connection", func(data any) {
+		if c, ok := data.(*peer.DataConnection); ok {
 			p := &Peer{
 				DataConnection: c,
 				Parent:         i,
@@ -243,75 +195,93 @@ func (i *Instance) Run() {
 				Done:           make(chan bool),
 			}
 			i.PeerHandler(p)
-		default:
-			panic("unhandled data type")
 		}
 	})
 
-	provider.On("error", func(data any) {
+	// 3. Bind Error Listener
+	p.On("error", func(data any) {
 		errMsg, ok := data.(peer.PeerError)
 		if !ok {
 			return
 		}
 
 		switch errMsg.Type {
-		case enums.PeerErrorTypeNetwork,
-			enums.PeerErrorTypeServerError,
-			enums.PeerErrorTypeSocketError,
-			enums.PeerErrorTypeSocketClosed,
+		case enums.PeerErrorTypeNetwork, enums.PeerErrorTypeServerError,
+			enums.PeerErrorTypeSocketError, enums.PeerErrorTypeSocketClosed,
 			enums.PeerErrorTypeDisconnected:
-
-			log.Printf("Recoverable error detected: %v", errMsg.Type)
+			log.Printf("Recoverable error: %v. Triggering reconnect...", errMsg.Type)
 			i.AttemptReconnect()
 
 		case enums.PeerErrorTypeUnavailableID:
-			log.Println("ID already in use. Manual intervention required.")
+			log.Println("ID already in use. Try again later.")
+			go func() {
+				i.Close <- true
+			}()
+			return
 
 		case enums.PeerErrorTypeSslUnavailable,
 			enums.PeerErrorTypeBrowserIncompatible,
 			enums.PeerErrorTypeInvalidID,
 			enums.PeerErrorTypeInvalidKey:
-			log.Fatalf("Fatal: %v. Manual intervention required.", errMsg.Type)
-
+			log.Printf("Fatal: %v. Manual intervention required.", errMsg.Type)
+			go func() {
+				i.Close <- true
+			}()
+			return
 		default:
-			log.Printf("Non-critical or unhandled error: %v", errMsg.Type)
+			log.Printf("Non-critical or unhandled peer error: %v", errMsg.Type)
 		}
 	})
 
-	var once sync.Once
-	triggerOpen := func() {
-		once.Do(func() {
-			i.RetryCounter = 0
-			log.Printf("Peer opened as %s", i.Name)
-			if fn := i.OnCreate; fn != nil {
-				fn()
-			}
-		})
+	// 4. Bind Open Listener
+	p.On("open", func(data any) {
 		i.mu.Lock()
-		if i.isReconnecting {
-			i.isReconnecting = false
-			i.RetryCounter = 0
-		}
+		i.isReconnecting = false
+		i.RetryCounter = 0
 		i.active_time_start = time.Now()
 		i.mu.Unlock()
-	}
 
-	provider.On("open", func(data any) {
-		triggerOpen()
+		log.Printf("Peer opened successfully as %s", i.Name)
+		if i.OnCreate != nil {
+			i.OnCreate()
+		}
 	})
 
-	triggerOpen()
-
-	provider.On("close", func(data any) {
-		log.Println("Peer closed")
+	// 5. Bind Close Listener
+	p.On("close", func(data any) {
+		log.Println("Peer connection closed.")
 		i.mu.Lock()
 		i.active_time_start = time.Time{}
 		i.mu.Unlock()
-		i.Done <- true
+		// If we didn't intend to close, try to reconnect
+		i.AttemptReconnect()
 	})
 
+	// Store the new handler
+	i.mu.Lock()
+	i.Handler = p
+	i.mu.Unlock()
+
+	return nil
+}
+
+func (i *Instance) Run() {
+	log.Println("Initializing peer...")
+
+	// Start the connection process
+	if err := i.setup(); err != nil {
+		log.Printf("Initial connection failed: %v. Reconnect loop will take over.", err)
+		i.AttemptReconnect()
+	}
+
+	log.Println("Peer instance is running...")
 	<-i.Close
-	log.Println("\nPeer got close signal")
+
+	log.Println("Shutting down peer instance...")
+	if i.Handler != nil {
+		i.Handler.Destroy()
+	}
+	i.Done <- true
 }
 
 func (i *Instance) GetPeerState() PeerState {

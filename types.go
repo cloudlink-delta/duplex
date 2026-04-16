@@ -61,6 +61,7 @@ type Instance struct {
 	isReconnecting                   bool
 	mu                               sync.Mutex
 	active_time_start                time.Time
+	peerjs_config                    peer.Options
 }
 
 type PeerState struct {
