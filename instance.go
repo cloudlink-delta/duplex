@@ -53,12 +53,37 @@ func New(ID string, args *Config) *Instance {
 	} else {
 		config.Configuration.ICEServers = []webrtc.ICEServer{
 			{
-				URLs: []string{"stun:vpn.mikedev101.cc:3478", "stun:vpn.mikedev101.cc:5349"},
+				// All CloudLink-provided STUN servers
+				URLs: []string{
+					"stun:vpn.mikedev101.cc:3478",
+					"stun:vpn.mikedev101.cc:5349",
+				},
 			},
 			{
-				URLs:       []string{"turn:vpn.mikedev101.cc:5349", "turn:vpn.mikedev101.cc:3478"},
+				// All CloudLink-provided TURN servers
+				URLs: []string{
+					"turn:vpn.mikedev101.cc:5349",
+					"turn:vpn.mikedev101.cc:3478",
+				},
 				Username:   "free",
 				Credential: "free",
+			},
+			{
+				// Other STUN servers
+				URLs: []string{
+					"stun:stun.l.google.com:19302",
+					"stun:stun.l.google.com:5349",
+					"stun:stun1.l.google.com:3478",
+					"stun:stun1.l.google.com:5349",
+					"stun:stun2.l.google.com:19302",
+					"stun:stun2.l.google.com:5349",
+					"stun:stun3.l.google.com:3478",
+					"stun:stun3.l.google.com:5349",
+					"stun:stun4.l.google.com:19302",
+					"stun:stun4.l.google.com:5349",
+					"stun.cloudflare.com:3478",
+					"stun.cloudflare.com:53",
+				},
 			},
 		}
 	}
@@ -187,13 +212,13 @@ func (i *Instance) AttemptReconnect() {
 			for range 15 {
 				time.Sleep(1 * time.Second)
 
-			i.mu.Lock()
+				i.mu.Lock()
 				success := !i.isReconnecting
 				i.mu.Unlock()
 
 				if success {
-				return
-			}
+					return
+				}
 			}
 		}
 	}()
