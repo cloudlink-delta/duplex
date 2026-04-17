@@ -19,7 +19,7 @@ type Config struct {
 	ICEServers   []webrtc.ICEServer
 	EnablePinger bool
 	PingInterval int64 // in milliseconds
-	Logger       *zerolog.Logger
+	LogLevel     zerolog.Level
 }
 
 type Peers map[string]*Peer
@@ -44,11 +44,10 @@ func New(ID string, args *Config) *Instance {
 	return i
 }
 
-func (i *Instance) default_logger() *zerolog.Logger {
+func (i *Instance) default_logger(level zerolog.Level) *zerolog.Logger {
 	// Configure zerolog
 	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
-	logger := zerolog.New(output).With().Timestamp().Logger()
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	logger := zerolog.New(output).With().Timestamp().Logger().Level(level)
 	logger = logger.With().Str("instance", i.Name).Logger()
 	return &logger
 }
@@ -65,13 +64,8 @@ func (i *Instance) configure(args *Config) {
 		i.PingInterval = time.Duration(args.PingInterval) * time.Millisecond
 	}
 
-	if args.Logger == nil {
-		i.Logger = i.default_logger()
-	} else {
-		i.Logger = args.Logger
-	}
-
-	config.LogLevel = i.Logger.GetLevel()
+	i.Logger = i.default_logger(args.LogLevel)
+	config.LogLevel = args.LogLevel
 
 	if len(args.Hostname) > 0 {
 		config.Host = args.Hostname
