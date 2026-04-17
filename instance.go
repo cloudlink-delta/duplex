@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	peer "github.com/muka/peerjs-go"
-	"github.com/muka/peerjs-go/enums"
+	peer "github.com/cloudlink-delta/peerjs-go"
+	"github.com/cloudlink-delta/peerjs-go/enums"
 	"github.com/pion/webrtc/v3"
 )
 

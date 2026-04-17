@@ -3,8 +3,8 @@ module github.com/cloudlink-delta/duplex
 go 1.26.2
 
 require (
+	github.com/cloudlink-delta/peerjs-go v0.0.0-20260417153319-a61241cb94e6
 	github.com/goccy/go-json v0.10.6
-	github.com/muka/peerjs-go v0.0.0-20240401061429-5b28944b9e4f
 	github.com/pion/webrtc/v3 v3.3.6
 )
 
