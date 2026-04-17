@@ -3,7 +3,7 @@ module github.com/cloudlink-delta/duplex
 go 1.26.2
 
 require (
-	github.com/cloudlink-delta/peerjs-go v0.0.0-20260417153319-a61241cb94e6
+	github.com/cloudlink-delta/peerjs-go v0.0.0-20260417190947-ccacadd5d31e
 	github.com/goccy/go-json v0.10.6
 	github.com/pion/webrtc/v3 v3.3.6
 	github.com/rs/zerolog v1.35.0
@@ -15,7 +15,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/pion/datachannel v1.6.0 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
 	github.com/pion/ice/v2 v2.3.38 // indirect
@@ -33,7 +33,6 @@ require (
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v2 v2.1.6 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.50.0 // indirect

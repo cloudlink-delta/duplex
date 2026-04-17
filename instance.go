@@ -71,7 +71,7 @@ func (i *Instance) configure(args *Config) {
 		i.Logger = args.Logger
 	}
 
-	config.Debug = 2
+	config.LogLevel = i.Logger.GetLevel()
 
 	if len(args.Hostname) > 0 {
 		config.Host = args.Hostname
