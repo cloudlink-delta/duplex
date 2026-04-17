@@ -2,7 +2,6 @@ package duplex
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -12,13 +11,13 @@ import (
 func (c *Peer) Write(packet *TxPacket) {
 	resp, err := json.Marshal(packet)
 	if err != nil {
-		log.Println(err)
+		c.Logger.Error().Err(err).Msg("failed to marshal packet for writing")
 		return
 	}
 
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
-	log.Printf("%s 🢀  %v", c.GiveName(), packet)
+	c.Logger.Debug().Str("direction", "out").RawJSON("packet", []byte(packet.String())).Msg("sending packet")
 	c.Send(resp, true)
 }
 
@@ -27,12 +26,11 @@ func (c *Peer) Write(packet *TxPacket) {
 func (c *Peer) WriteBlocking(packet *TxPacket) {
 	resp, err := json.Marshal(packet)
 	if err != nil {
-		log.Println(err)
+		c.Logger.Error().Err(err).Msg("failed to marshal packet for writing")
 		return
 	}
 
 	c.Lock.Lock()
-	log.Printf("%s 🢀  %v", c.GiveName(), packet)
 	c.Send(resp, true)
 	c.Lock.Unlock()
 
@@ -60,7 +58,7 @@ func (c *Peer) Read(data any) *RxPacket {
 	default:
 		b, err := json.Marshal(v)
 		if err != nil {
-			log.Printf("Unsupported data type %T and failed to marshal: %v", v, err)
+			c.Logger.Error().Err(err).Str("type", fmt.Sprintf("%T", v)).Msg("Unsupported data type and failed to marshal")
 			return nil
 		}
 		raw = b
@@ -76,7 +74,7 @@ func (c *Peer) Read(data any) *RxPacket {
 	// 2. Decode into the RxPacket struct
 	var packet RxPacket
 	if err := json.Unmarshal(raw, &packet); err != nil {
-		log.Println("Error unmarshaling inner packet:", err)
+		c.Logger.Error().Err(err).RawJSON("raw_packet", raw).Msg("Error unmarshaling inner packet")
 		return nil
 	}
 

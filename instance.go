@@ -1,7 +1,7 @@
 package duplex
 
 import (
-	"log"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -9,6 +9,7 @@ import (
 	peer "github.com/cloudlink-delta/peerjs-go"
 	"github.com/cloudlink-delta/peerjs-go/enums"
 	"github.com/pion/webrtc/v3"
+	"github.com/rs/zerolog"
 )
 
 type Config struct {
@@ -18,18 +19,15 @@ type Config struct {
 	ICEServers   []webrtc.ICEServer
 	EnablePinger bool
 	PingInterval int64 // in milliseconds
-	VeryVerbose  bool
+	Logger       *zerolog.Logger
 }
 
 type Peers map[string]*Peer
 type PeerSlice []*Peer
 
 func New(ID string, args *Config) *Instance {
-	config := configure(args)
-	return &Instance{
+	i := &Instance{
 		Name:                             ID,
-		Pinger:                           args.EnablePinger,
-		PingInterval:                     time.Duration(args.PingInterval) * time.Millisecond,
 		Close:                            make(chan bool),
 		Done:                             make(chan bool),
 		RetryCounter:                     0,
@@ -39,22 +37,41 @@ func New(ID string, args *Config) *Instance {
 		CustomHandlers:                   make(map[string]func(*Peer, *RxPacket)),
 		RemappedHandlersRequiredFeatures: make(map[string][]string),
 		RemappedHandlers:                 make(map[string]func(*Peer, *RxPacket)),
-		peerjs_config:                    config,
 	}
+
+	i.configure(args)
+
+	return i
 }
 
-func configure(args *Config) peer.Options {
+func (i *Instance) default_logger() *zerolog.Logger {
+	// Configure zerolog
+	output := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	logger := zerolog.New(output).With().Timestamp().Logger()
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	logger = logger.With().Str("instance", i.Name).Logger()
+	return &logger
+}
+
+func (i *Instance) configure(args *Config) {
 	config := peer.NewOptions()
 
 	if args == nil {
 		args = &Config{}
 	}
 
-	if args.VeryVerbose {
-		config.Debug = 3
-	} else {
-		config.Debug = 2
+	if args.EnablePinger {
+		i.Pinger = true
+		i.PingInterval = time.Duration(args.PingInterval) * time.Millisecond
 	}
+
+	if args.Logger == nil {
+		i.Logger = i.default_logger()
+	} else {
+		i.Logger = args.Logger
+	}
+
+	config.Debug = 2
 
 	if len(args.Hostname) > 0 {
 		config.Host = args.Hostname
@@ -105,7 +122,8 @@ func configure(args *Config) peer.Options {
 			},
 		}
 	}
-	return config
+
+	i.peerjs_config = config
 }
 
 func (p *Peers) ToSlice(exclusions ...*Peer) PeerSlice {
@@ -125,7 +143,7 @@ func (i *Instance) AttemptReconnect() {
 		return
 	}
 	if i.RetryCounter >= i.MaxRetries {
-		log.Printf("Max retries (%d) reached. Giving up.", i.MaxRetries)
+		i.Logger.Warn().Msgf("Max retries (%d) reached. Giving up.", i.MaxRetries)
 		i.mu.Unlock()
 		return
 	}
@@ -144,7 +162,7 @@ func (i *Instance) AttemptReconnect() {
 			currentRetry := i.RetryCounter
 			i.mu.Unlock()
 
-			log.Printf("Re-initialization attempt #%d...", currentRetry+1)
+			i.Logger.Info().Msgf("Re-initialization attempt #%d...", currentRetry+1)
 
 			// 1. Create a channel to catch the setup result
 			type setupResult struct {
@@ -164,9 +182,9 @@ func (i *Instance) AttemptReconnect() {
 					// setup() handles resetting i.isReconnecting on "open"
 					return
 				}
-				log.Printf("Setup failed: %v", res.err)
+				i.Logger.Error().Err(res.err).Msg("Setup failed")
 			case <-time.After(15 * time.Second):
-				log.Printf("Setup timed out (network still unreachable)")
+				i.Logger.Warn().Msg("Setup timed out (network still unreachable)")
 			}
 
 			// 3. Prepare for next loop
@@ -206,6 +224,7 @@ func (i *Instance) setup() error {
 				Listeners:      make(map[string]Listener),
 				IsInitiator:    false,
 				Done:           make(chan bool),
+				Logger:         i.Logger.With().Str("peer_id", c.GetPeerID()).Logger(),
 			}
 			i.PeerHandler(p)
 		}
@@ -222,11 +241,11 @@ func (i *Instance) setup() error {
 		case enums.PeerErrorTypeNetwork, enums.PeerErrorTypeServerError,
 			enums.PeerErrorTypeSocketError, enums.PeerErrorTypeSocketClosed,
 			enums.PeerErrorTypeDisconnected:
-			log.Printf("Recoverable error: %v. Triggering reconnect...", errMsg.Type)
+			i.Logger.Warn().Str("error_type", errMsg.Type).Msg("Recoverable error. Triggering reconnect...")
 			i.AttemptReconnect()
 
 		case enums.PeerErrorTypeUnavailableID:
-			log.Println("ID already in use. Try again later.")
+			i.Logger.Error().Msg("ID already in use. Try again later.")
 			go func() {
 				i.Close <- true
 			}()
@@ -236,13 +255,13 @@ func (i *Instance) setup() error {
 			enums.PeerErrorTypeBrowserIncompatible,
 			enums.PeerErrorTypeInvalidID,
 			enums.PeerErrorTypeInvalidKey:
-			log.Printf("Fatal: %v. Manual intervention required.", errMsg.Type)
+			i.Logger.Fatal().Str("error_type", errMsg.Type).Msg("Fatal error. Manual intervention required.")
 			go func() {
 				i.Close <- true
 			}()
 			return
 		default:
-			log.Printf("Non-critical or unhandled peer error: %v", errMsg.Type)
+			i.Logger.Warn().Str("error_type", errMsg.Type).Msg("Non-critical or unhandled peer error")
 		}
 	})
 
@@ -254,7 +273,7 @@ func (i *Instance) setup() error {
 		i.active_time_start = time.Now()
 		i.mu.Unlock()
 
-		log.Printf("Peer opened successfully as %s", i.Name)
+		i.Logger.Info().Msgf("Peer opened successfully as %s", i.Name)
 		if i.OnCreate != nil {
 			i.OnCreate()
 		}
@@ -262,7 +281,7 @@ func (i *Instance) setup() error {
 
 	// 5. Bind Close Listener
 	p.On("close", func(data any) {
-		log.Println("Peer connection closed.")
+		i.Logger.Info().Msg("Peer connection closed.")
 		i.mu.Lock()
 		i.active_time_start = time.Time{}
 		i.mu.Unlock()
@@ -279,18 +298,18 @@ func (i *Instance) setup() error {
 }
 
 func (i *Instance) Run() {
-	log.Println("Initializing peer...")
+	i.Logger.Info().Msg("Initializing peer...")
 
 	// Start the connection process
 	if err := i.setup(); err != nil {
-		log.Printf("Initial connection failed: %v. Reconnect loop will take over.", err)
+		i.Logger.Error().Err(err).Msg("Initial connection failed. Reconnect loop will take over.")
 		i.AttemptReconnect()
 	}
 
-	log.Println("Peer instance is running...")
+	i.Logger.Info().Msg("Peer instance is running...")
 	<-i.Close
 
-	log.Println("Shutting down peer instance...")
+	i.Logger.Info().Msg("Shutting down peer instance...")
 	if i.Handler != nil {
 		i.Handler.Destroy()
 	}
@@ -323,7 +342,7 @@ func (i *Instance) Connect(id string) *Peer {
 
 	conn, err := i.Handler.Connect(id, options)
 	if err != nil {
-		log.Printf("Failed to connect to peer %s: %v", id, err)
+		i.Logger.Error().Err(err).Msgf("Failed to connect to peer %s", id)
 		return nil
 	}
 
@@ -337,6 +356,7 @@ func (i *Instance) Connect(id string) *Peer {
 		Listeners:      make(map[string]Listener),
 		IsInitiator:    true,
 		Done:           make(chan bool),
+		Logger:         i.Logger.With().Str("peer_id", conn.GetPeerID()).Logger(),
 	}
 
 	i.PeerHandler(p)
@@ -367,8 +387,8 @@ func (i *Instance) SpawnTicker(conn *Peer) {
 
 func (i *Instance) PeerHandler(conn *Peer) {
 	conn.On("open", func(data any) {
-		log.Printf("%s connected", conn.GiveName())
-		log.Printf("%s metadata: %v", conn.GiveName(), conn.Metadata)
+		conn.Logger.Info().Msg("connected")
+		conn.Logger.Debug().Interface("metadata", conn.Metadata).Msg("metadata")
 		i.Peers[conn.GetPeerID()] = conn
 
 		if conn.IsInitiator {
@@ -384,7 +404,7 @@ func (i *Instance) PeerHandler(conn *Peer) {
 	})
 
 	conn.On("close", func(data any) {
-		log.Printf("%s disconnected", conn.GiveName())
+		conn.Logger.Info().Msg("disconnected")
 		delete(i.Peers, conn.GetPeerID())
 		select {
 		case <-conn.Done:
@@ -397,7 +417,7 @@ func (i *Instance) PeerHandler(conn *Peer) {
 	})
 
 	conn.On("error", func(data any) {
-		log.Printf("%s error: %v", conn.GiveName(), data)
+		conn.Logger.Error().Interface("error", data).Msg("peer error")
 	})
 
 	conn.On("data", func(data any) {
@@ -405,14 +425,14 @@ func (i *Instance) PeerHandler(conn *Peer) {
 		if packet == nil {
 			return
 		}
-		log.Printf("%s 🢂  %v", conn.GiveName(), packet)
+		conn.Logger.Debug().Str("direction", "in").RawJSON("packet", []byte(packet.String())).Msg("packet received")
 		go conn.HandlePacket(packet)
 	})
 }
 
 func (i *Instance) Bind(opcode string, handler func(*Peer, *RxPacket), required_features ...string) {
 	if _, exists := i.CustomHandlers[opcode]; exists {
-		log.Printf("Handler for opcode %s already exists", opcode)
+		i.Logger.Warn().Msgf("Handler for opcode %s already exists", opcode)
 		return
 	}
 	i.CustomHandlers[opcode] = handler
@@ -423,7 +443,7 @@ func (i *Instance) Bind(opcode string, handler func(*Peer, *RxPacket), required_
 
 func (i *Instance) Remap(opcode string, handler func(*Peer, *RxPacket), required_features ...string) {
 	if _, exists := i.RemappedHandlers[opcode]; exists {
-		log.Printf("Remapped handler for opcode %s already exists", opcode)
+		i.Logger.Warn().Msgf("Remapped handler for opcode %s already exists", opcode)
 		return
 	}
 	i.RemappedHandlers[opcode] = handler

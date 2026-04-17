@@ -1,7 +1,6 @@
 package duplex
 
 import (
-	"log"
 	"slices"
 	"strings"
 	"time"
@@ -16,7 +15,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 
 	// Drop packet if TTL is < 0
 	if r.TTL < 0 {
-		log.Printf("%s dropped packet \"%s\": TTL expired", conn.GiveName(), r.Opcode)
+		conn.Logger.Warn().Str("opcode", r.Opcode).Msg("dropped packet: TTL expired")
 		return
 	}
 
@@ -29,7 +28,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 			// Check if the peer has all the required features
 			for _, feature := range required_features {
 				if !slices.Contains(conn.Features, feature) {
-					log.Printf("%s dropped packet \"%s\": missing required feature %s", conn.GiveName(), r.Opcode, feature)
+					conn.Logger.Warn().Str("opcode", r.Opcode).Str("feature", feature).Msg("dropped packet: missing required feature")
 					return
 				}
 			}
@@ -68,7 +67,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 
 		err := json.Unmarshal(r.Payload, &then)
 		if err != nil {
-			log.Println(err)
+			conn.Logger.Error().Err(err).Msg("failed to unmarshal ping request")
 			return
 		}
 
@@ -101,7 +100,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 		var reply PongReply
 		err := json.Unmarshal(r.Payload, &reply)
 		if err != nil {
-			log.Println(err)
+			conn.Logger.Error().Err(err).Msg("failed to unmarshal pong reply")
 			return
 		}
 
@@ -109,7 +108,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 		rtt := now - reply.T1
 		conn.RTT = rtt
 
-		log.Printf("%s latency: %dms", conn.GiveName(), rtt)
+		conn.Logger.Debug().Int64("rtt_ms", rtt).Msg("latency updated")
 
 	default:
 
@@ -128,7 +127,7 @@ func (conn *Peer) HandlePacket(r *RxPacket) {
 				}
 
 				if !match_found {
-					log.Printf("%s dropped packet \"%s\": client is missing any of the required feature(s): %v", conn.GiveName(), r.Opcode, required_features)
+					conn.Logger.Warn().Str("opcode", r.Opcode).Strs("required_features", required_features).Msg("dropped packet: client is missing any of the required feature(s)")
 					return
 				}
 			}
@@ -142,18 +141,17 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 	var arguments NegotiationArgs
 	err := json.Unmarshal(reader.Payload, &arguments)
 	if err != nil {
-		log.Println(err)
+		conn.Logger.Error().Err(err).Msg("failed to unmarshal negotiation arguments")
 		return
 	}
 
-	log.Printf("%s using dialect revision %d on %s (v%d.%d.%d)\n",
-		conn.GiveName(),
-		arguments.SpecVersion,
-		arguments.Version.Type,
-		arguments.Version.Major,
-		arguments.Version.Minor,
-		arguments.Version.Patch,
-	)
+	conn.Logger.Info().
+		Int("spec_version", arguments.SpecVersion).
+		Str("client_type", arguments.Version.Type).
+		Int("major", arguments.Version.Major).
+		Int("minor", arguments.Version.Minor).
+		Int("patch", arguments.Version.Patch).
+		Msg("peer using dialect")
 
 	var advertised_features []string
 	if arguments.IsBridge {
@@ -170,7 +168,7 @@ func (conn *Peer) HandleNegotiate(reader *RxPacket) {
 	}
 
 	if len(advertised_features) > 0 {
-		log.Printf("%s advertises the following features: %v", conn.GiveName(), strings.Join(advertised_features, ", "))
+		conn.Logger.Info().Str("features", strings.Join(advertised_features, ", ")).Msg("peer advertises features")
 	}
 
 	// Store our advertised features

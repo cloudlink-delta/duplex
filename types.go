@@ -6,6 +6,7 @@ import (
 
 	peer "github.com/cloudlink-delta/peerjs-go"
 	"github.com/goccy/go-json"
+	"github.com/rs/zerolog"
 )
 
 type Listener func(*RxPacket)
@@ -30,6 +31,7 @@ type Peer struct {
 	Done                 chan bool                // Channel to signal connection closure
 	RTT                  int64                    // Round-trip time (in milliseconds)
 	GiveNameRemapper     func() string
+	Logger               zerolog.Logger
 	*peer.DataConnection // Pointer to the peer data connection
 }
 
@@ -62,6 +64,7 @@ type Instance struct {
 	mu                               sync.Mutex
 	active_time_start                time.Time
 	peerjs_config                    peer.Options
+	Logger                           *zerolog.Logger
 }
 
 type PeerState struct {
