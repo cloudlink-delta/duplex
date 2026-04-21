@@ -6,7 +6,7 @@ require (
 	github.com/cloudlink-delta/peerjs-go v0.0.0-20260417204616-3d3dc508461a
 	github.com/goccy/go-json v0.10.6
 	github.com/pion/webrtc/v3 v3.3.6
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 )
 
 require (
