@@ -1,8 +1,10 @@
 package duplex
 
 import (
+	"bytes"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/goccy/go-json"
 )
@@ -56,25 +58,58 @@ func (c *Peer) Read(data any) *RxPacket {
 	case string:
 		raw = []byte(v)
 	default:
+		// If it's already a struct/map, we trust it came from internal code
 		b, err := json.Marshal(v)
 		if err != nil {
-			c.Logger.Error().Err(err).Str("type", fmt.Sprintf("%T", v)).Msg("Unsupported data type and failed to marshal")
+			c.Logger.Error().Err(err).Str("type", fmt.Sprintf("%T", v)).Msg("Unsupported data type")
 			return nil
 		}
 		raw = b
 	}
 
-	// 1. Attempt to decode as a JSON string (e.g. if sent from JS client with double encoding)
-	var jsonString string
-	if err := json.Unmarshal(raw, &jsonString); err == nil {
-		// It was a JSON string, so update raw to the inner JSON
-		raw = []byte(jsonString)
+	// Hard Size Limit
+	// PeerJS signaling packets (SDP/ICE) are almost never > 64KB.
+	// This helps mitigate memory exhaustion before parsing.
+	if len(raw) > 1024*64 {
+		c.Logger.Warn().Int("size", len(raw)).Msg("Rejected oversized packet")
+		return nil
 	}
 
-	// 2. Decode into the RxPacket struct
+	// Fast UTF-8 Validation
+	// Validating UTF-8 is significantly faster than Unmarshaling JSON.
+	if !utf8.Valid(raw) {
+		c.Logger.Warn().Msg("Rejected binary frame (invalid UTF-8)")
+		return nil
+	}
+
+	// 3. Structural "First-Byte" Check
+	// PeerJS packets must be a JSON Object (starts with '{')
+	// or a double-encoded JSON String (starts with '"').
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '"') {
+		c.Logger.Warn().Msg("Rejected packet: Not a valid JSON object or string")
+		return nil
+	}
+
+	// Attempt to decode as a JSON string (Double Encoding)
+	if trimmed[0] == '"' {
+		var jsonString string
+		if err := json.Unmarshal(raw, &jsonString); err == nil {
+			raw = []byte(jsonString)
+			// Re-verify the inner raw is an object
+			trimmed = bytes.TrimSpace(raw)
+			if len(trimmed) == 0 || trimmed[0] != '{' {
+				return nil
+			}
+		}
+	}
+
+	// Decode into the RxPacket struct
 	var packet RxPacket
 	if err := json.Unmarshal(raw, &packet); err != nil {
-		c.Logger.Error().Err(err).RawJSON("raw_packet", raw).Msg("Error unmarshaling inner packet")
+		// Log error but don't include the raw data if it's too large
+		// to prevent log-filling attacks
+		c.Logger.Error().Msg("Error unmarshaling inner packet")
 		return nil
 	}
 

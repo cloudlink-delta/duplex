@@ -117,7 +117,7 @@ func (i *Instance) configure(args *Config) {
 		}
 	}
 
-	i.peerjs_config = config
+	i.peerjs_config = &config
 }
 
 func (p *Peers) ToSlice(exclusions ...*Peer) PeerSlice {
@@ -200,7 +200,7 @@ func (i *Instance) AttemptReconnect() {
 func (i *Instance) setup() error {
 
 	// 1. Create the Peer
-	p, err := peer.NewPeer(i.Name, i.peerjs_config)
+	p, err := peer.NewPeer(i.Name, *i.peerjs_config)
 	if err != nil {
 		return err
 	}
@@ -329,6 +329,7 @@ func (i *Instance) Connect(id string) *Peer {
 	options.Label = "default"
 	options.Reliable = true
 	options.Serialization = "json"
+	options.LogLevel = i.peerjs_config.LogLevel
 	options.Metadata = map[string]any{
 		"protocol": "delta",
 		"name":     i.Name,

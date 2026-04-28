@@ -63,7 +63,7 @@ type Instance struct {
 	isReconnecting                   bool
 	mu                               sync.Mutex
 	active_time_start                time.Time
-	peerjs_config                    peer.Options
+	peerjs_config                    *peer.Options
 	Logger                           *zerolog.Logger
 }
 
