@@ -8,7 +8,7 @@ import (
 
 	peer "github.com/cloudlink-delta/peerjs-go"
 	"github.com/cloudlink-delta/peerjs-go/enums"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
 
