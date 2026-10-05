@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/cloudlink-delta/peerjs-go v0.0.0-20260809042802-df488257be1a
-	github.com/goccy/go-json v0.10.6
+	github.com/goccy/go-json v0.11.2
 	github.com/pion/webrtc/v4 v4.2.18
 	github.com/rs/zerolog v1.35.1
 )
